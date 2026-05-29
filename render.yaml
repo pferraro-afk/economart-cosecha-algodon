@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cosecha-algodon
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: FINNEGANS_CLIENT_ID
+        sync: false
+      - key: FINNEGANS_CLIENT_SECRET
+        sync: false
+      - key: FINNEGANS_OAUTH_URL
+        sync: false
+      - key: FINNEGANS_REPORT_URL
+        sync: false
