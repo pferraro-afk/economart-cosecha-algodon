@@ -1,0 +1,22 @@
+# Datos sensibles
+data/raw/
+*.csv
+*.xlsx
+!data/processed/schema_*.csv
+
+# Secrets
+.env
+secrets.env
+
+# Python
+*.pyc
+__pycache__/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
