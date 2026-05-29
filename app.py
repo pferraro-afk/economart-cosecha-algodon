@@ -132,11 +132,11 @@ def color_rinde(val):
 # -- UI ----------------------------------------------------------------------
 
 st.title("🌿 Control de Cosecha de Algodon")
-st.caption("Grupo Duhau — Fuente: Finnegans API")
+st.caption("Grupo Duhau - Fuente: Finnegans API")
 
 col_ref, _ = st.columns([1, 8])
 with col_ref:
-    if st.button("↺ Actualizar datos"):
+    if st.button("Actualizar datos"):
         st.cache_data.clear()
         st.rerun()
 
@@ -242,7 +242,7 @@ disp_campo = vc.rename(columns={
 })[["Empresa", "Campo", "Sup (ha)", "Bruto (Tn)", "Rinde Bruto (kg/ha)",
     "Fibra (Tn)", "Rinde Desmote (%)", "Fardos", "Peso Prom Fardo (kg)"]]
 st.dataframe(
-    disp_campo.style.applymap(color_rinde, subset=["Rinde Desmote (%)"]),
+    disp_campo.style.map(color_rinde, subset=["Rinde Desmote (%)"]),
     use_container_width=True, hide_index=True,
 )
 
@@ -254,7 +254,7 @@ disp_lote = vl.rename(columns={
 })[["Empresa", "Campo", "Lote", "Sup (ha)", "Bruto (Tn)", "Rinde Bruto (kg/ha)",
     "Fibra (Tn)", "Rinde Desmote (%)", "Fardos"]]
 st.dataframe(
-    disp_lote.style.applymap(color_rinde, subset=["Rinde Desmote (%)"]),
+    disp_lote.style.map(color_rinde, subset=["Rinde Desmote (%)"]),
     use_container_width=True, hide_index=True,
 )
 
@@ -266,7 +266,7 @@ disp_desm = vd.rename(columns={
 })[["Desmotadora", "Empresa", "Campo", "Entregado (kg)", "Fibra (kg)",
     "Rinde (%)", "Fardos", "Peso Prom Fardo (kg)"]]
 st.dataframe(
-    disp_desm.style.applymap(color_rinde, subset=["Rinde (%)"]),
+    disp_desm.style.map(color_rinde, subset=["Rinde (%)"]),
     use_container_width=True, hide_index=True,
 )
 
@@ -277,6 +277,6 @@ disp_cont = vcont.rename(columns={
     "rinde_desmote": "Rinde (%)", "fardos": "Fardos",
 })[["Contratista", "Bruto (kg)", "Fibra (kg)", "Rinde (%)", "Fardos"]]
 st.dataframe(
-    disp_cont.style.applymap(color_rinde, subset=["Rinde (%)"]),
+    disp_cont.style.map(color_rinde, subset=["Rinde (%)"]),
     use_container_width=True, hide_index=True,
 )
