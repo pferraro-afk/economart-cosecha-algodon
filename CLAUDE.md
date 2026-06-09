@@ -48,9 +48,52 @@ df.columns = df.columns.str.lower()
 - **NULL literal:** columnas numéricas pueden tener el string `"NULL"`. Parsear con: `pd.to_numeric(df['col'].replace('NULL', None), errors='coerce')`
 - **Columnas en minúsculas** tras normalizar con `df.columns = df.columns.str.lower()`.
 
-### Schema del dataset
+### Schema del dataset (AnalisisRemitosAlgodonDuhau)
 
-> Pendiente de exploración inicial. Correr `scripts/explore_api.py` para ver columnas disponibles.
+Columnas clave (minúsculas tras normalización): `pesoneto`, `cantidadproducidakilos`, `cantidadproducidafardos`, `rindefibra`, `supsembrada`, `depositodestino`, `empresa`, `establecimiento`, `loteproduccion`, `contratistacosecha`, `partida`, `fecha`.
+
+---
+
+## API 2 — Control SISA (planificado vs real)
+
+### OAuth + Endpoint
+
+```python
+# OAuth: igual que API 1 (GET con query params, token = resp.text.strip().strip('"'))
+# IMPORTANTE: renovar token en CADA llamada a esta API
+
+resp = requests.get(
+    os.environ["FINNEGANS_SISA_URL"],  # https://api.finneg.com/api/reports/ControlSisaDuhau
+    params={
+        "ACCESS_TOKEN":              token,
+        "PARAM_Campana":             "25-26_CampAgr",
+        "PARAM_IndicadorSuperficie": 1,
+    },
+    timeout=180,
+)
+df = pd.DataFrame(resp.json())
+df.columns = df.columns.str.lower()
+```
+
+> Credencial: misma del `.env` (`FINNEGANS_SISA_URL` agregado).
+
+### Filtro de actividad algodón
+
+```python
+df = df[df["actividad"].str.contains("algod", case=False, na=False)]
+```
+
+Variantes existentes: "Algodón" (140 lotes), "Algodón 2da" (9), "Algodón sobre melilotus" (2). Usar "algod" (no "algodon") porque vienen con tilde.
+
+### Schema del dataset (ControlSisaDuhau)
+
+Columnas clave (minúsculas): `lugar`, `lote`, `empresa`, `zona`, `actividad`, `superficieplanificada`, `superficiesembrada`, `superficiecosechada`, `porcentajeavance`, `tnplanificados`, `tnproducidos`, `tnproducidossecos`, `rindeesperado`, `rindeobtenido`, `restoacosechar`, `tncertificada`, `cantidadproducidasecundaria`, `fechaprimeracosecha`, `fechaultimacosecha`.
+
+### Quirks conocidos
+
+- `lugar` viene con espacios al final — normalizar con `.str.strip()`
+- `empresa` también viene con espacio al inicio — normalizar con `.str.strip()`
+- `cantidadproducidasecundaria` es columna nueva (agregada en 2026-06)
 
 ## Estructura del Repo
 
