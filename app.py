@@ -439,9 +439,9 @@ if not sisa.empty:
     pct_entrega  = tot_entreg / tot_prod * 100 if tot_prod > 0 else 0
     pct_en_est   = tot_en_est / tot_prod * 100 if tot_prod > 0 else 0
 
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    c1.metric("Sup Sembrada",      f"{tot_semb:,.0f} ha")
-    c2.metric("Tn Planificadas",   f"{tot_plan:,.1f} Tn")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Sup Sembrada",    f"{tot_semb:,.0f} ha")
+    c2.metric("Tn Planificadas", f"{tot_plan:,.1f} Tn")
     c3.metric(
         "Tn Producidas",
         f"{tot_prod:,.1f} Tn",
@@ -450,20 +450,22 @@ if not sisa.empty:
     c4.metric(
         "Entregado a Desm.",
         f"{tot_entreg:,.1f} Tn",
-        delta=f"{pct_entrega:.0f}% de lo producido",
+        delta=f"{pct_entrega:.0f}% del total prod.",
         delta_color="off",
     )
+
+    c5, c6, c7, _ = st.columns(4)
     c5.metric(
         "En Establecimiento",
         f"{tot_en_est:,.1f} Tn",
-        delta=f"{pct_en_est:.0f}% pendiente de entrega",
+        delta=f"{pct_en_est:.0f}% sin entregar",
         delta_color="inverse",
     )
     c6.metric("Rollos Producidos", f"{tot_rol_prod:,.0f}")
     c7.metric(
         "Rollos Cargados",
         f"{tot_rol_carg:,.0f}",
-        delta=f"{tot_rol_carg - tot_rol_prod:+,.0f} vs producidos",
+        delta=f"{tot_rol_carg - tot_rol_prod:+,.0f} vs prod.",
         delta_color="off",
     )
 
@@ -507,15 +509,15 @@ if not sisa.empty:
 
     disp_rc = rc.rename(columns={
         "campo":              "Campo",
-        "sup_sembrada":       "Sup Semb (ha)",
-        "tn_planificadas":    "Tn Planificadas",
-        "tn_producidas":      "Tn Producidas",
+        "sup_sembrada":       "Sup Semb ha",
+        "tn_planificadas":    "Tn Plan",
+        "tn_producidas":      "Tn Prod",
         "cumpl_plan_pct":     "% vs Plan",
-        "entregado_tn":       "Entregado (Tn)",
+        "entregado_tn":       "Entregado Tn",
         "avance_entrega_pct": "% Entregado",
-        "en_establecimiento": "En Establecim. (Tn)",
-        "rollos_producidos":  "Rollos Prod.",
-        "rollos_cargados":    "Rollos Carg.",
+        "en_establecimiento": "En Estab. Tn",
+        "rollos_producidos":  "Rollos Prod",
+        "rollos_cargados":    "Rollos Carg",
     })
     disp_rc_tot = totales_row(disp_rc, "Campo")
     n = len(disp_rc)
@@ -524,7 +526,7 @@ if not sisa.empty:
         style_total_row(
             disp_rc_tot.style
                 .format(fmt_num(disp_rc_tot), na_rep="—")
-                .map(sem_en_est, subset=["En Establecim. (Tn)"])
+                .map(sem_en_est, subset=["En Estab. Tn"])
                 .map(sem_avance_entrega, subset=["% Entregado"]),
             n,
         ),
@@ -557,17 +559,19 @@ else:
     tot_resto    = sisa["restoacosechar"].sum()
     avance_gl    = tot_sup_cos / tot_sup_semb * 100 if tot_sup_semb > 0 else 0
 
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    c1.metric("Sup Planificada",  f"{tot_sup_plan:,.0f} ha")
-    c2.metric("Sup Sembrada",     f"{tot_sup_semb:,.0f} ha")
-    c3.metric("Sup Cosechada",    f"{tot_sup_cos:,.0f} ha")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Sup Planificada", f"{tot_sup_plan:,.0f} ha")
+    c2.metric("Sup Sembrada",    f"{tot_sup_semb:,.0f} ha")
+    c3.metric("Sup Cosechada",   f"{tot_sup_cos:,.0f} ha")
     c4.metric(
         "Avance Global",
         f"{avance_gl:.1f}%",
-        delta=f"{avance_gl - 100:.1f}% vs completo",
+        delta=f"{avance_gl - 100:.1f}% restante",
         delta_color="inverse",
     )
-    c5.metric("Tn Planificadas",  f"{tot_tn_plan:,.0f}")
+
+    c5, c6, c7, _ = st.columns(4)
+    c5.metric("Tn Planificadas", f"{tot_tn_plan:,.0f}")
     c6.metric(
         "Tn Producidas",
         f"{tot_tn_prod:,.0f}",
@@ -625,20 +629,20 @@ else:
         "empresasucursal":  "Sucursal",
         "lugar":            "Campo",
         "lotes":            "Lotes",
-        "sup_planificada":  "Sup Plan (ha)",
-        "sup_sembrada":     "Sup Semb (ha)",
-        "sup_cosechada":    "Sup Cos (ha)",
-        "avance_pct":       "Avance (%)",
+        "sup_planificada":  "S.Plan ha",
+        "sup_sembrada":     "S.Semb ha",
+        "sup_cosechada":    "S.Cos ha",
+        "avance_pct":       "Avance %",
         "tn_planificadas":  "Tn Plan",
         "tn_producidas":    "Tn Prod",
-        "tn_resto":         "Resto (ha)",
+        "tn_resto":         "Resto ha",
         "desvio_tn":        "Desvío Tn",
-        "desvio_pct":       "Desvío (%)",
-        "rinde_esp_kgha":   "Rinde Esp (kg/ha)",
-        "rinde_obt_kgha":   "Rinde Obt (kg/ha)",
-    })[["Sucursal", "Campo", "Lotes", "Sup Plan (ha)", "Sup Semb (ha)", "Sup Cos (ha)",
-        "Avance (%)", "Tn Plan", "Tn Prod", "Desvío Tn", "Desvío (%)",
-        "Rinde Esp (kg/ha)", "Rinde Obt (kg/ha)"]]
+        "desvio_pct":       "Desvío %",
+        "rinde_esp_kgha":   "R.Esp kg/ha",
+        "rinde_obt_kgha":   "R.Obt kg/ha",
+    })[["Sucursal", "Campo", "Lotes", "S.Plan ha", "S.Semb ha", "S.Cos ha",
+        "Avance %", "Tn Plan", "Tn Prod", "Desvío Tn", "Desvío %",
+        "R.Esp kg/ha", "R.Obt kg/ha"]]
 
     disp_sisa_tot = totales_row(disp_sisa, "Campo")
     n_sisa = len(disp_sisa)
@@ -646,8 +650,8 @@ else:
         style_total_row(
             disp_sisa_tot.style
                 .format(fmt_num(disp_sisa_tot), na_rep="—")
-                .map(sem_avance, subset=["Avance (%)"])
-                .map(sem_desvio, subset=["Desvío (%)"]),
+                .map(sem_avance, subset=["Avance %"])
+                .map(sem_desvio, subset=["Desvío %"]),
             n_sisa,
         ),
         use_container_width=True,
@@ -670,21 +674,21 @@ else:
                 "lugar":                "Campo",
                 "lote":                 "Lote",
                 "actividad":            "Actividad",
-                "superficieplanificada":"Sup Plan (ha)",
-                "superficiesembrada":   "Sup Semb (ha)",
-                "superficiecosechada":  "Sup Cos (ha)",
-                "porcentajeavance":     "Avance (%)",
+                "superficieplanificada":"S.Plan ha",
+                "superficiesembrada":   "S.Semb ha",
+                "superficiecosechada":  "S.Cos ha",
+                "porcentajeavance":     "Avance %",
                 "tnplanificados":       "Tn Plan",
                 "tnproducidos":         "Tn Prod",
-                "restoacosechar":       "Resto (ha)",
-                "rindeesperado":        "Rinde Esp (kg/ha)",
-                "rindeobtenido":        "Rinde Obt (kg/ha)",
+                "restoacosechar":       "Resto ha",
+                "rindeesperado":        "R.Esp kg/ha",
+                "rindeobtenido":        "R.Obt kg/ha",
             })
         )
         st.dataframe(
             disp_lote_sisa.style
                 .format(fmt_num(disp_lote_sisa), na_rep="—")
-                .map(sem_avance, subset=["Avance (%)"]),
+                .map(sem_avance, subset=["Avance %"]),
             use_container_width=True,
             hide_index=True,
         )
@@ -713,14 +717,16 @@ bruto_total = rem["pesoneto"].sum()
 fibra_total = rem["cantidadproducidakilos"].sum()
 rd_total    = fibra_total / bruto_total * 100 if bruto_total > 0 else 0
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1, c2, c3 = st.columns(3)
 c1.metric("Algodón Bruto",   f"{bruto_total / 1000:,.1f} Tn")
 c2.metric("Fibra Producida", f"{fibra_total / 1000:,.1f} Tn")
 c3.metric(
     "Rinde Desmote",
     f"{rd_total:.1f}%",
-    delta=f"{rd_total - 24:.1f}pp vs mínimo (24%)",
+    delta=f"{rd_total - 24:.1f}pp vs ref. 24%",
 )
+
+c4, c5, c6 = st.columns(3)
 c4.metric("Fardos",  f"{int(rem['cantidadproducidafardos'].sum()):,}")
 c5.metric("Campos",  rem["establecimiento"].nunique())
 c6.metric("Remitos", len(rem))
