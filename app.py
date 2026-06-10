@@ -91,7 +91,7 @@ def clean_remitos(df):
         )
     if "partida" in df.columns:
         df["campania_norm"] = df["partida"].str.extract(r"(\d{2}-\d{2})$")
-    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
+    df["fecha"] = pd.to_datetime(df["fecha"], dayfirst=True, errors="coerce")
     if "establecimiento" in df.columns:
         df["establecimiento"] = df["establecimiento"].str.strip()
     return df
