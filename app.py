@@ -195,7 +195,7 @@ def resumen_cruzado(sisa_df, rem_df):
         sup_sembrada      = ("superficiesembrada",           "sum"),
         tn_planificadas   = ("tnplanificados",               "sum"),
         tn_producidas     = ("tnproducidos",                 "sum"),
-        rollos_producidos = ("cantidaddeproductoscosechado", "sum"),
+        rollos_producidos = ("cantidadproducidasecundaria",  "sum"),
     ).reset_index().rename(columns={"lugar": "campo"})
 
     rem_agg = rem_df.groupby("establecimiento").agg(

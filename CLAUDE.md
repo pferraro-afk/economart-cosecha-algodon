@@ -93,7 +93,9 @@ Columnas clave (minúsculas): `lugar`, `lote`, `empresa`, `zona`, `actividad`, `
 
 - `lugar` viene con espacios al final — normalizar con `.str.strip()`
 - `empresa` también viene con espacio al inicio — normalizar con `.str.strip()`
-- `cantidadproducidasecundaria` es columna nueva (agregada en 2026-06)
+- **Rollos producidos = `cantidadproducidasecundaria`** (NO `cantidaddeproductoscosechado`)
+  - `cantidadproducidasecundaria` es la cantidad de rollos cosechados (ej: 200 rollos para 800 tn = ~4 tn/rollo, peso típico)
+  - `cantidaddeproductoscosechado` es otra cosa (probablemente nº de pasadas o tipos de producto), no usar para rollos
 
 ## Estructura del Repo
 
