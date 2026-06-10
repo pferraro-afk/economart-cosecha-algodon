@@ -550,16 +550,22 @@ with st.sidebar:
         if sel_campos:
             mask &= raw_rem["establecimiento"].isin(sel_campos)
         if d_desde and d_hasta:
+            # incluir remitos sin fecha — excluirlos por dato faltante genera subconteo silencioso
             mask &= (
-                (raw_rem["fecha"].dt.date >= d_desde) &
-                (raw_rem["fecha"].dt.date <= d_hasta)
+                raw_rem["fecha"].isna() |
+                (
+                    (raw_rem["fecha"].dt.date >= d_desde) &
+                    (raw_rem["fecha"].dt.date <= d_hasta)
+                )
             )
         rem = raw_rem[mask].copy()
 
     st.caption(f"SISA: {len(sisa)} lotes")
     st.caption(f"Remitos: {len(rem)} registros")
     if d_desde and d_hasta:
-        st.caption(f"Período: {d_desde.strftime('%d/%m')} → {d_hasta.strftime('%d/%m')}")
+        sin_fecha = rem["fecha"].isna().sum()
+        aviso = f" · {sin_fecha} sin fecha" if sin_fecha > 0 else ""
+        st.caption(f"Período: {d_desde.strftime('%d/%m')} → {d_hasta.strftime('%d/%m')}{aviso}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECCIÓN 0 — RESUMEN GENERAL
