@@ -3,26 +3,40 @@ import pandas as pd
 import numpy as np
 import requests
 import plotly.express as px
+import io
 import os
+import datetime
 from dotenv import load_dotenv
 
 load_dotenv(".env")
 
 st.set_page_config(
-    page_title="Cosecha Algodón - Duhau",
+    page_title="Cosecha Algodón — Duhau",
     page_icon="🌿",
     layout="wide",
 )
 
-# ── OAuth ─────────────────────────────────────────────────────────────────────
+# ── credentials (local .env + Streamlit Cloud secrets) ───────────────────────
+
+def get_env(key):
+    try:
+        return st.secrets[key]
+    except (KeyError, AttributeError, FileNotFoundError):
+        pass
+    val = os.environ.get(key)
+    if not val:
+        raise ValueError(f"Credencial faltante: {key}")
+    return val
+
+# ── auth ──────────────────────────────────────────────────────────────────────
 
 def get_token():
     resp = requests.get(
-        os.environ["FINNEGANS_OAUTH_URL"],
+        get_env("FINNEGANS_OAUTH_URL"),
         params={
             "grant_type":    "client_credentials",
-            "client_id":     os.environ["FINNEGANS_CLIENT_ID"],
-            "client_secret": os.environ["FINNEGANS_CLIENT_SECRET"],
+            "client_id":     get_env("FINNEGANS_CLIENT_ID"),
+            "client_secret": get_env("FINNEGANS_CLIENT_SECRET"),
         },
         timeout=30,
     )
@@ -35,7 +49,7 @@ def get_token():
 def fetch_remitos():
     token = get_token()
     resp = requests.get(
-        os.environ["FINNEGANS_REPORT_URL"],
+        get_env("FINNEGANS_REPORT_URL"),
         params={"ACCESS_TOKEN": token},
         timeout=180,
     )
@@ -48,7 +62,7 @@ def fetch_remitos():
 def fetch_sisa():
     token = get_token()
     resp = requests.get(
-        os.environ["FINNEGANS_SISA_URL"],
+        get_env("FINNEGANS_SISA_URL"),
         params={
             "ACCESS_TOKEN":              token,
             "PARAM_Campana":             "25-26_CampAgr",
@@ -61,11 +75,11 @@ def fetch_sisa():
     df.columns = df.columns.str.lower()
     return df[df["actividad"].str.contains("algod", case=False, na=False)].copy()
 
-# ── limpieza ──────────────────────────────────────────────────────────────────
+# ── cleaning ──────────────────────────────────────────────────────────────────
 
 def clean_remitos(df):
     for col in ["pesoneto", "cantidadproducidakilos", "cantidadproducidafardos",
-                "rindefibra", "supsembrada"]:
+                "rindefibra", "supsembrada", "cantidadstock2"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].replace("NULL", None), errors="coerce")
     if "depositodestino" in df.columns:
@@ -82,25 +96,66 @@ def clean_remitos(df):
     return df
 
 def clean_sisa(df):
-    num_cols = ["superficieplanificada", "superficiesembrada", "superficiecosechada",
-                "porcentajeavance", "tnplanificados", "tnproducidos", "tnproducidossecos",
-                "rindeesperado", "rindeobtenido", "restoacosechar", "tncertificada",
-                "cantidadproducidasecundaria", "cantidaddeproductoscosechado"]
+    num_cols = [
+        "superficieplanificada", "superficiesembrada", "superficiecosechada",
+        "porcentajeavance", "tnplanificados", "tnproducidos", "tnproducidossecos",
+        "rindeesperado", "rindeobtenido", "restoacosechar", "tncertificada",
+        "cantidadproducidasecundaria", "cantidaddeproductoscosechado",
+    ]
     for col in num_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-    if "lugar" in df.columns:
-        df["lugar"] = df["lugar"].str.strip()
-    if "empresasucursal" in df.columns:
-        df["empresasucursal"] = df["empresasucursal"].str.strip()
+    for col in ["lugar", "empresasucursal", "empresa"]:
+        if col in df.columns:
+            df[col] = df[col].str.strip()
     return df
 
-# ── formato numérico ─────────────────────────────────────────────────────────
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 def fmt_num(df):
-    return {col: "{:,.2f}" for col in df.select_dtypes("number").columns}
+    result = {}
+    for col in df.select_dtypes("number").columns:
+        vals = df[col].dropna()
+        if len(vals) > 0 and ((vals % 1) == 0).all():
+            result[col] = "{:,.0f}"
+        else:
+            result[col] = "{:,.2f}"
+    return result
 
-# ── semáforos ─────────────────────────────────────────────────────────────────
+def to_excel_bytes(df):
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False)
+    return buf.getvalue()
+
+def download_btn(df, filename, label="⬇ Descargar Excel"):
+    st.download_button(
+        label=label,
+        data=to_excel_bytes(df),
+        file_name=filename,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+def totales_row(df, label_col, label="TOTAL"):
+    """Append a totals row, skipping percentage columns."""
+    sum_cols = [c for c in df.select_dtypes("number").columns if "%" not in c]
+    row = {c: np.nan for c in df.columns}
+    row[label_col] = label
+    for c in sum_cols:
+        row[c] = df[c].sum()
+    return pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+def style_total_row(styled, n_rows):
+    """Bold + shaded background on the last (total) row."""
+    return styled.apply(
+        lambda row: [
+            "font-weight:800;background-color:#e8f5e9;color:#1a5c2a"
+            if row.name == n_rows else ""
+            for _ in row
+        ],
+        axis=1,
+    )
+
+# ── semaphores ────────────────────────────────────────────────────────────────
 
 def sem_rinde(val):
     if pd.isna(val): return ""
@@ -120,20 +175,32 @@ def sem_desvio(val):
     if val >= -15: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
     return "background-color:#fadbd8;color:#c0392b;font-weight:700"
 
-# ── resumen cruzado ──────────────────────────────────────────────────────────
+def sem_en_est(val):
+    if pd.isna(val): return ""
+    if val == 0:   return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val <= 50:  return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
+
+def sem_avance_entrega(val):
+    if pd.isna(val): return ""
+    if val >= 90: return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val >= 50: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
+
+# ── aggregations ──────────────────────────────────────────────────────────────
 
 def resumen_cruzado(sisa_df, rem_df):
     sisa_agg = sisa_df.groupby("lugar").agg(
-        sup_sembrada=("superficiesembrada",          "sum"),
-        tn_planificadas=("tnplanificados",            "sum"),
-        tn_producidas=("tnproducidos",                "sum"),
-        rollos_producidos=("cantidaddeproductoscosechado", "sum"),
+        sup_sembrada      = ("superficiesembrada",           "sum"),
+        tn_planificadas   = ("tnplanificados",               "sum"),
+        tn_producidas     = ("tnproducidos",                 "sum"),
+        rollos_producidos = ("cantidaddeproductoscosechado", "sum"),
     ).reset_index().rename(columns={"lugar": "campo"})
 
     rem_agg = rem_df.groupby("establecimiento").agg(
         entregado_tn=("pesoneto", "sum"),
     ).reset_index().rename(columns={"establecimiento": "campo"})
-    rem_agg["entregado_tn"] = rem_agg["entregado_tn"] / 1000
+    rem_agg["entregado_tn"] /= 1000
 
     rem_rollos = rem_df[rem_df["producto"].str.contains("Rollos", case=False, na=False)]
     rol_agg = rem_rollos.groupby("establecimiento").agg(
@@ -145,25 +212,19 @@ def resumen_cruzado(sisa_df, rem_df):
     g["entregado_tn"]       = g["entregado_tn"].fillna(0)
     g["rollos_cargados"]    = g["rollos_cargados"].fillna(0)
     g["en_establecimiento"] = (g["tn_producidas"] - g["entregado_tn"]).clip(lower=0)
+    g["avance_entrega_pct"] = (g["entregado_tn"] / g["tn_producidas"] * 100).where(g["tn_producidas"] > 0)
+    g["cumpl_plan_pct"]     = (g["tn_producidas"] / g["tn_planificadas"] * 100).where(g["tn_planificadas"] > 0)
     return g.sort_values("campo")
-
-def sem_en_establecimiento(val):
-    if pd.isna(val): return ""
-    if val == 0:  return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
-    if val <= 50: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
-    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
-
-# ── agregaciones SISA ─────────────────────────────────────────────────────────
 
 def agg_campo_sisa(df):
     g = df.groupby(["empresasucursal", "lugar"]).agg(
-        sup_planificada=("superficieplanificada", "sum"),
-        sup_sembrada=("superficiesembrada",       "sum"),
-        sup_cosechada=("superficiecosechada",     "sum"),
-        tn_planificadas=("tnplanificados",         "sum"),
-        tn_producidas=("tnproducidos",             "sum"),
-        tn_resto=("restoacosechar",                "sum"),
-        lotes=("lote",                             "count"),
+        sup_planificada = ("superficieplanificada", "sum"),
+        sup_sembrada    = ("superficiesembrada",    "sum"),
+        sup_cosechada   = ("superficiecosechada",   "sum"),
+        tn_planificadas = ("tnplanificados",        "sum"),
+        tn_producidas   = ("tnproducidos",          "sum"),
+        tn_resto        = ("restoacosechar",        "sum"),
+        lotes           = ("lote",                 "count"),
     ).reset_index()
     g["avance_pct"]     = (g["sup_cosechada"] / g["sup_sembrada"] * 100).where(g["sup_sembrada"] > 0)
     g["rinde_esp_kgha"] = (g["tn_planificadas"] * 1000 / g["sup_planificada"]).where(g["sup_planificada"] > 0)
@@ -171,8 +232,6 @@ def agg_campo_sisa(df):
     g["desvio_tn"]      = g["tn_producidas"] - g["tn_planificadas"]
     g["desvio_pct"]     = (g["desvio_tn"] / g["tn_planificadas"] * 100).where(g["tn_planificadas"] > 0)
     return g.sort_values(["empresasucursal", "lugar"])
-
-# ── agregaciones remitos ──────────────────────────────────────────────────────
 
 def sup_lote(df):
     return (
@@ -182,10 +241,10 @@ def sup_lote(df):
 
 def agg_campo_rem(df, sup):
     g = df.groupby(["empresa", "establecimiento"]).agg(
-        bruto_kg=("pesoneto",               "sum"),
-        fibra_kg=("cantidadproducidakilos",  "sum"),
-        fardos=("cantidadproducidafardos",   "sum"),
-        remitos=("pesoneto",                 "count"),
+        bruto_kg = ("pesoneto",               "sum"),
+        fibra_kg = ("cantidadproducidakilos",  "sum"),
+        fardos   = ("cantidadproducidafardos", "sum"),
+        remitos  = ("pesoneto",               "count"),
     ).reset_index()
     ha = sup.groupby(["empresa", "establecimiento"])["sup_ha"].sum().reset_index()
     g = g.merge(ha, on=["empresa", "establecimiento"], how="left")
@@ -198,9 +257,9 @@ def agg_campo_rem(df, sup):
 
 def agg_lote(df, sup):
     g = df.groupby(["empresa", "establecimiento", "loteproduccion"]).agg(
-        bruto_kg=("pesoneto",               "sum"),
-        fibra_kg=("cantidadproducidakilos",  "sum"),
-        fardos=("cantidadproducidafardos",   "sum"),
+        bruto_kg = ("pesoneto",               "sum"),
+        fibra_kg = ("cantidadproducidakilos",  "sum"),
+        fardos   = ("cantidadproducidafardos", "sum"),
     ).reset_index()
     g = g.merge(sup, on=["empresa", "establecimiento", "loteproduccion"], how="left")
     g["bruto_tn"]      = g["bruto_kg"] / 1000
@@ -211,9 +270,9 @@ def agg_lote(df, sup):
 
 def agg_desmotadora(df):
     g = df.groupby(["desmotadora", "empresa", "establecimiento"]).agg(
-        entrega_kg=("pesoneto",               "sum"),
-        fibra_kg=("cantidadproducidakilos",   "sum"),
-        fardos=("cantidadproducidafardos",    "sum"),
+        entrega_kg = ("pesoneto",              "sum"),
+        fibra_kg   = ("cantidadproducidakilos","sum"),
+        fardos     = ("cantidadproducidafardos","sum"),
     ).reset_index()
     g["rinde_desmote"] = (g["fibra_kg"] / g["entrega_kg"] * 100).where(g["entrega_kg"] > 0)
     g["ppf_kg"]        = (g["entrega_kg"] / g["fardos"]).where(g["fardos"] > 0)
@@ -221,9 +280,9 @@ def agg_desmotadora(df):
 
 def agg_contratista(df):
     g = df.groupby("contratistacosecha").agg(
-        bruto_kg=("pesoneto",               "sum"),
-        fibra_kg=("cantidadproducidakilos",  "sum"),
-        fardos=("cantidadproducidafardos",   "sum"),
+        bruto_kg = ("pesoneto",               "sum"),
+        fibra_kg = ("cantidadproducidakilos",  "sum"),
+        fardos   = ("cantidadproducidafardos", "sum"),
     ).reset_index()
     g["rinde_desmote"] = (g["fibra_kg"] / g["bruto_kg"] * 100).where(g["bruto_kg"] > 0)
     return g.sort_values("bruto_kg", ascending=False)
@@ -232,89 +291,177 @@ def agg_semanal(df):
     g = df.copy()
     g["semana"] = g["fecha"].dt.to_period("W").dt.start_time
     return g.groupby("semana").agg(
-        bruto_kg=("pesoneto",              "sum"),
-        fardos=("cantidadproducidafardos", "sum"),
+        bruto_kg = ("pesoneto",               "sum"),
+        fardos   = ("cantidadproducidafardos", "sum"),
     ).reset_index()
 
-# ── UI ────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# UI — header
+# ═══════════════════════════════════════════════════════════════════════════════
 
 st.title("🌿 Control de Cosecha de Algodón")
-st.caption("Grupo Duhau — Fuente: Finnegans API")
+st.caption("Grupo Duhau · Campaña 2025/26 · Fuente: Finnegans API")
 
-col_ref, _ = st.columns([1, 8])
-with col_ref:
-    if st.button("Actualizar datos"):
+col_btn, col_ts = st.columns([1, 9])
+with col_btn:
+    if st.button("↺ Actualizar"):
         st.cache_data.clear()
+        st.session_state.pop("last_update", None)
         st.rerun()
 
+# ── data load (resilient — partial mode if one API fails) ─────────────────────
+
+raw_rem  = None
+raw_sisa = None
+sisa_error = None
+rem_error  = None
+
 try:
-    raw_rem  = clean_remitos(fetch_remitos())
+    raw_rem = clean_remitos(fetch_remitos())
+except Exception as e:
+    rem_error = str(e)
+
+try:
     raw_sisa = clean_sisa(fetch_sisa())
 except Exception as e:
-    st.error(f"Error conectando con Finnegans: {e}")
+    sisa_error = str(e)
+
+if raw_rem is None and raw_sisa is None:
+    st.error("No se pudo conectar con ningún servicio de Finnegans. Verificá las credenciales.")
     st.stop()
+
+if "last_update" not in st.session_state:
+    st.session_state.last_update = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+with col_ts:
+    st.caption(f"Última actualización: {st.session_state.last_update} · caché 5 min")
+
+if sisa_error:
+    st.warning(f"⚠️ Planificación SISA no disponible: {sisa_error}")
+if rem_error:
+    st.warning(f"⚠️ Remitos no disponibles: {rem_error}")
 
 # ── sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.header("Filtros")
 
-    # empresas: unión de sucursales (SISA) y empresa (remitos)
-    empresas = sorted(
-        set(raw_sisa["empresasucursal"].dropna().unique()) |
-        set(raw_rem["empresa"].dropna().unique())
-    )
-    sel_empresa = st.multiselect("Empresa", empresas, default=empresas)
+    empresas_sisa = set(raw_sisa["empresasucursal"].dropna().unique()) if raw_sisa is not None else set()
+    empresas_rem  = set(raw_rem["empresa"].dropna().unique()) if raw_rem is not None else set()
+    empresas      = sorted(empresas_sisa | empresas_rem)
+    sel_empresa   = st.multiselect("Empresa", empresas, default=empresas)
 
-    # campos: siempre desde SISA (lugar) — es la fuente primaria de planificación
-    campos_disponibles = sorted(
-        raw_sisa[raw_sisa["empresasucursal"].isin(sel_empresa)]["lugar"].dropna().unique()
-    )
+    campos_disponibles = []
+    if raw_sisa is not None:
+        campos_disponibles = sorted(
+            raw_sisa[raw_sisa["empresasucursal"].isin(sel_empresa)]["lugar"].dropna().unique()
+        )
     sel_campos = st.multiselect("Campo", campos_disponibles, default=campos_disponibles)
 
-    campanias = sorted(raw_rem["campania_norm"].dropna().unique(), reverse=True)
-    sel_camp  = st.selectbox("Campaña", campanias) if campanias else "25-26"
+    campanias = []
+    if raw_rem is not None:
+        campanias = sorted(raw_rem["campania_norm"].dropna().unique(), reverse=True)
+    sel_camp = st.selectbox("Campaña", campanias) if campanias else "25-26"
+
+    # date range filter
+    d_desde = d_hasta = None
+    if raw_rem is not None and not raw_rem["fecha"].isna().all():
+        fecha_min = raw_rem["fecha"].min().date()
+        fecha_max = raw_rem["fecha"].max().date()
+        sel_fecha = st.date_input(
+            "Período de remitos",
+            value=(fecha_min, fecha_max),
+            min_value=fecha_min,
+            max_value=fecha_max,
+        )
+        if isinstance(sel_fecha, (list, tuple)) and len(sel_fecha) == 2:
+            d_desde, d_hasta = sel_fecha
+        elif isinstance(sel_fecha, (list, tuple)) and len(sel_fecha) == 1:
+            d_desde = d_hasta = sel_fecha[0]
+        else:
+            d_desde = d_hasta = sel_fecha
 
     st.markdown("---")
 
-    # cada servicio filtra por su propia columna
-    sisa = raw_sisa[
-        raw_sisa["empresasucursal"].isin(sel_empresa) &
-        raw_sisa["lugar"].isin(sel_campos)
-    ].copy()
+    sisa = pd.DataFrame()
+    if raw_sisa is not None:
+        sisa = raw_sisa[
+            raw_sisa["empresasucursal"].isin(sel_empresa) &
+            raw_sisa["lugar"].isin(sel_campos)
+        ].copy()
 
-    rem = raw_rem[
-        raw_rem["empresa"].isin(sel_empresa) &
-        (raw_rem["campania_norm"] == sel_camp) &
-        raw_rem["establecimiento"].isin(sel_campos)
-    ].copy()
+    rem = pd.DataFrame()
+    if raw_rem is not None:
+        mask = (
+            raw_rem["empresa"].isin(sel_empresa) &
+            (raw_rem["campania_norm"] == sel_camp)
+        )
+        if sel_campos:
+            mask &= raw_rem["establecimiento"].isin(sel_campos)
+        if d_desde and d_hasta:
+            mask &= (
+                (raw_rem["fecha"].dt.date >= d_desde) &
+                (raw_rem["fecha"].dt.date <= d_hasta)
+            )
+        rem = raw_rem[mask].copy()
 
     st.caption(f"SISA: {len(sisa)} lotes")
     st.caption(f"Remitos: {len(rem)} registros")
+    if d_desde and d_hasta:
+        st.caption(f"Período: {d_desde.strftime('%d/%m')} → {d_hasta.strftime('%d/%m')}")
 
-# ── SECCIÓN 0: RESUMEN GENERAL ────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECCIÓN 0 — RESUMEN GENERAL
+# ═══════════════════════════════════════════════════════════════════════════════
 
 st.header("Resumen General")
 
 if not sisa.empty:
     rc = resumen_cruzado(sisa, rem)
 
-    tot_semb       = rc["sup_sembrada"].sum()
-    tot_plan       = rc["tn_planificadas"].sum()
-    tot_prod       = rc["tn_producidas"].sum()
-    tot_entreg     = rc["entregado_tn"].sum()
-    tot_en_est     = rc["en_establecimiento"].sum()
-    tot_rol_prod   = rc["rollos_producidos"].sum()
-    tot_rol_carg   = rc["rollos_cargados"].sum()
+    tot_semb     = rc["sup_sembrada"].sum()
+    tot_plan     = rc["tn_planificadas"].sum()
+    tot_prod     = rc["tn_producidas"].sum()
+    tot_entreg   = rc["entregado_tn"].sum()
+    tot_en_est   = rc["en_establecimiento"].sum()
+    tot_rol_prod = rc["rollos_producidos"].sum()
+    tot_rol_carg = rc["rollos_cargados"].sum()
+    pct_entrega  = tot_entreg / tot_prod * 100 if tot_prod > 0 else 0
+    pct_en_est   = tot_en_est / tot_prod * 100 if tot_prod > 0 else 0
 
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    c1.metric("Sup Sembrada",        f"{tot_semb:,.0f} ha")
-    c2.metric("Tn Planificadas",     f"{tot_plan:,.2f} Tn")
-    c3.metric("Tn Producidas",       f"{tot_prod:,.2f} Tn")
-    c4.metric("Entregado a Desm.",   f"{tot_entreg:,.2f} Tn")
-    c5.metric("En Establecimiento",  f"{tot_en_est:,.2f} Tn")
-    c6.metric("Rollos Producidos",   f"{tot_rol_prod:,.0f}")
-    c7.metric("Rollos Cargados",     f"{tot_rol_carg:,.0f}")
+    c1.metric("Sup Sembrada",      f"{tot_semb:,.0f} ha")
+    c2.metric("Tn Planificadas",   f"{tot_plan:,.1f} Tn")
+    c3.metric(
+        "Tn Producidas",
+        f"{tot_prod:,.1f} Tn",
+        delta=f"{tot_prod - tot_plan:+,.1f} Tn vs plan",
+    )
+    c4.metric(
+        "Entregado a Desm.",
+        f"{tot_entreg:,.1f} Tn",
+        delta=f"{pct_entrega:.0f}% de lo producido",
+        delta_color="off",
+    )
+    c5.metric(
+        "En Establecimiento",
+        f"{tot_en_est:,.1f} Tn",
+        delta=f"{pct_en_est:.0f}% pendiente de entrega",
+        delta_color="inverse",
+    )
+    c6.metric("Rollos Producidos", f"{tot_rol_prod:,.0f}")
+    c7.metric(
+        "Rollos Cargados",
+        f"{tot_rol_carg:,.0f}",
+        delta=f"{tot_rol_carg - tot_rol_prod:+,.0f} vs producidos",
+        delta_color="off",
+    )
+
+    # progress bar: % entregado del total producido
+    st.progress(
+        min(pct_entrega / 100, 1.0),
+        text=f"Entregado a desmotadora: {pct_entrega:.1f}% de lo producido",
+    )
 
     st.divider()
 
@@ -323,21 +470,37 @@ if not sisa.empty:
         "sup_sembrada":       "Sup Semb (ha)",
         "tn_planificadas":    "Tn Planificadas",
         "tn_producidas":      "Tn Producidas",
-        "entregado_tn":       "Entregado a Desm. (Tn)",
-        "en_establecimiento": "En Establecimiento (Tn)",
-        "rollos_producidos":  "Rollos Producidos",
-        "rollos_cargados":    "Rollos Cargados",
+        "cumpl_plan_pct":     "% vs Plan",
+        "entregado_tn":       "Entregado (Tn)",
+        "avance_entrega_pct": "% Entregado",
+        "en_establecimiento": "En Establecim. (Tn)",
+        "rollos_producidos":  "Rollos Prod.",
+        "rollos_cargados":    "Rollos Carg.",
     })
+    disp_rc_tot = totales_row(disp_rc, "Campo")
+    n = len(disp_rc)
+
     st.dataframe(
-        disp_rc.style
-            .format(fmt_num(disp_rc), na_rep="—")
-            .map(sem_en_establecimiento, subset=["En Establecimiento (Tn)"]),
-        use_container_width=True, hide_index=True,
+        style_total_row(
+            disp_rc_tot.style
+                .format(fmt_num(disp_rc_tot), na_rep="—")
+                .map(sem_en_est, subset=["En Establecim. (Tn)"])
+                .map(sem_avance_entrega, subset=["% Entregado"]),
+            n,
+        ),
+        use_container_width=True,
+        hide_index=True,
     )
+    download_btn(disp_rc, "resumen_general.xlsx")
+
+else:
+    st.info("Sin datos de planificación SISA para los filtros seleccionados.")
 
 st.divider()
 
-# ── SECCIÓN 1: PLANIFICACIÓN DE CAMPAÑA (SISA) ────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECCIÓN 1 — PLANIFICACIÓN DE CAMPAÑA (SISA)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 st.header("Planificación de Campaña")
 
@@ -358,10 +521,24 @@ else:
     c1.metric("Sup Planificada",  f"{tot_sup_plan:,.0f} ha")
     c2.metric("Sup Sembrada",     f"{tot_sup_semb:,.0f} ha")
     c3.metric("Sup Cosechada",    f"{tot_sup_cos:,.0f} ha")
-    c4.metric("Avance Global",    f"{avance_gl:.1f}%")
+    c4.metric(
+        "Avance Global",
+        f"{avance_gl:.1f}%",
+        delta=f"{avance_gl - 100:.1f}% vs completo",
+        delta_color="inverse",
+    )
     c5.metric("Tn Planificadas",  f"{tot_tn_plan:,.0f}")
-    c6.metric("Tn Producidas",    f"{tot_tn_prod:,.0f}")
+    c6.metric(
+        "Tn Producidas",
+        f"{tot_tn_prod:,.0f}",
+        delta=f"{tot_tn_prod - tot_tn_plan:+,.0f} vs plan",
+    )
     c7.metric("Resto a Cosechar", f"{tot_resto:,.0f} ha")
+
+    st.progress(
+        min(avance_gl / 100, 1.0),
+        text=f"Avance de cosecha: {avance_gl:.1f}% de la superficie sembrada",
+    )
 
     st.divider()
 
@@ -379,8 +556,10 @@ else:
             text="avance_pct",
         )
         fig_av.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-        fig_av.update_layout(height=400, margin=dict(l=0, r=40, t=0, b=0),
-                             coloraxis_showscale=False)
+        fig_av.update_layout(
+            height=420, margin=dict(l=0, r=40, t=0, b=0),
+            coloraxis_showscale=False,
+        )
         st.plotly_chart(fig_av, use_container_width=True)
 
     with col_g2:
@@ -388,7 +567,7 @@ else:
         df_rinde_melt = vc_sisa.melt(
             id_vars="lugar",
             value_vars=["rinde_esp_kgha", "rinde_obt_kgha"],
-            var_name="tipo", value_name="kg_ha"
+            var_name="tipo", value_name="kg_ha",
         ).replace({"rinde_esp_kgha": "Planificado", "rinde_obt_kgha": "Producido"})
         fig_rinde = px.bar(
             df_rinde_melt,
@@ -396,57 +575,86 @@ else:
             labels={"kg_ha": "kg/ha", "lugar": "", "tipo": ""},
             color_discrete_map={"Planificado": "#aed6f1", "Producido": "#2ecc71"},
         )
-        fig_rinde.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0), legend_title="")
+        fig_rinde.update_layout(
+            height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
+        )
         st.plotly_chart(fig_rinde, use_container_width=True)
 
     st.subheader("Detalle por campo — Planificado vs Real")
     disp_sisa = vc_sisa.rename(columns={
-        "empresasucursal": "Sucursal", "lugar": "Campo", "lotes": "Lotes",
-        "sup_planificada": "Sup Plan (ha)", "sup_sembrada": "Sup Semb (ha)",
-        "sup_cosechada": "Sup Cos (ha)",   "avance_pct": "Avance (%)",
-        "tn_planificadas": "Tn Plan",       "tn_producidas": "Tn Prod",
-        "tn_resto": "Resto (ha)",           "desvio_tn": "Desvío Tn",
-        "desvio_pct": "Desvío (%)",         "rinde_esp_kgha": "Rinde Esp (kg/ha)",
-        "rinde_obt_kgha": "Rinde Obt (kg/ha)",
+        "empresasucursal":  "Sucursal",
+        "lugar":            "Campo",
+        "lotes":            "Lotes",
+        "sup_planificada":  "Sup Plan (ha)",
+        "sup_sembrada":     "Sup Semb (ha)",
+        "sup_cosechada":    "Sup Cos (ha)",
+        "avance_pct":       "Avance (%)",
+        "tn_planificadas":  "Tn Plan",
+        "tn_producidas":    "Tn Prod",
+        "tn_resto":         "Resto (ha)",
+        "desvio_tn":        "Desvío Tn",
+        "desvio_pct":       "Desvío (%)",
+        "rinde_esp_kgha":   "Rinde Esp (kg/ha)",
+        "rinde_obt_kgha":   "Rinde Obt (kg/ha)",
     })[["Sucursal", "Campo", "Lotes", "Sup Plan (ha)", "Sup Semb (ha)", "Sup Cos (ha)",
         "Avance (%)", "Tn Plan", "Tn Prod", "Desvío Tn", "Desvío (%)",
         "Rinde Esp (kg/ha)", "Rinde Obt (kg/ha)"]]
+
+    disp_sisa_tot = totales_row(disp_sisa, "Campo")
+    n_sisa = len(disp_sisa)
     st.dataframe(
-        disp_sisa.style
-            .format(fmt_num(disp_sisa), na_rep="—")
-            .map(sem_avance, subset=["Avance (%)"])
-            .map(sem_desvio, subset=["Desvío (%)"]),
-        use_container_width=True, hide_index=True,
+        style_total_row(
+            disp_sisa_tot.style
+                .format(fmt_num(disp_sisa_tot), na_rep="—")
+                .map(sem_avance, subset=["Avance (%)"])
+                .map(sem_desvio, subset=["Desvío (%)"]),
+            n_sisa,
+        ),
+        use_container_width=True,
+        hide_index=True,
     )
+    download_btn(disp_sisa, "planificacion_campo.xlsx")
 
     with st.expander("Ver detalle por lote (SISA)"):
-        cols_lote = ["empresasucursal", "lugar", "lote", "actividad",
-                     "superficieplanificada", "superficiesembrada", "superficiecosechada",
-                     "porcentajeavance", "tnplanificados", "tnproducidos",
-                     "restoacosechar", "rindeesperado", "rindeobtenido"]
+        cols_lote = [
+            "empresasucursal", "lugar", "lote", "actividad",
+            "superficieplanificada", "superficiesembrada", "superficiecosechada",
+            "porcentajeavance", "tnplanificados", "tnproducidos",
+            "restoacosechar", "rindeesperado", "rindeobtenido",
+        ]
         disp_lote_sisa = (
             sisa[[c for c in cols_lote if c in sisa.columns]]
             .sort_values(["empresasucursal", "lugar", "lote"])
             .rename(columns={
-                "empresasucursal": "Sucursal", "lugar": "Campo", "lote": "Lote",
-                "actividad": "Actividad",
-                "superficieplanificada": "Sup Plan (ha)", "superficiesembrada": "Sup Semb (ha)",
-                "superficiecosechada": "Sup Cos (ha)",    "porcentajeavance": "Avance (%)",
-                "tnplanificados": "Tn Plan",              "tnproducidos": "Tn Prod",
-                "restoacosechar": "Resto (ha)",           "rindeesperado": "Rinde Esp (kg/ha)",
-                "rindeobtenido": "Rinde Obt (kg/ha)",
+                "empresasucursal":      "Sucursal",
+                "lugar":                "Campo",
+                "lote":                 "Lote",
+                "actividad":            "Actividad",
+                "superficieplanificada":"Sup Plan (ha)",
+                "superficiesembrada":   "Sup Semb (ha)",
+                "superficiecosechada":  "Sup Cos (ha)",
+                "porcentajeavance":     "Avance (%)",
+                "tnplanificados":       "Tn Plan",
+                "tnproducidos":         "Tn Prod",
+                "restoacosechar":       "Resto (ha)",
+                "rindeesperado":        "Rinde Esp (kg/ha)",
+                "rindeobtenido":        "Rinde Obt (kg/ha)",
             })
         )
         st.dataframe(
             disp_lote_sisa.style
                 .format(fmt_num(disp_lote_sisa), na_rep="—")
                 .map(sem_avance, subset=["Avance (%)"]),
-            use_container_width=True, hide_index=True,
+            use_container_width=True,
+            hide_index=True,
         )
+        download_btn(disp_lote_sisa, "detalle_lotes_sisa.xlsx")
 
 st.divider()
 
-# ── SECCIÓN 2: REMITOS DE COSECHA ─────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECCIÓN 2 — REMITOS DE COSECHA
+# ═══════════════════════════════════════════════════════════════════════════════
 
 st.header("Remitos de Cosecha")
 
@@ -461,15 +669,21 @@ vd    = agg_desmotadora(rem)
 vcont = agg_contratista(rem)
 vsem  = agg_semanal(rem)
 
+bruto_total = rem["pesoneto"].sum()
+fibra_total = rem["cantidadproducidakilos"].sum()
+rd_total    = fibra_total / bruto_total * 100 if bruto_total > 0 else 0
+
 c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Algodón Bruto",   f"{rem['pesoneto'].sum()/1000:,.1f} Tn")
-c2.metric("Fibra Producida", f"{rem['cantidadproducidakilos'].sum()/1000:,.1f} Tn")
-rd_total = (rem["cantidadproducidakilos"].sum() / rem["pesoneto"].sum() * 100
-            if rem["pesoneto"].sum() > 0 else 0)
-c3.metric("Rinde Desmote",   f"{rd_total:.1f}%")
-c4.metric("Fardos",          f"{int(rem['cantidadproducidafardos'].sum()):,}")
-c5.metric("Campos",          rem["establecimiento"].nunique())
-c6.metric("Remitos",         len(rem))
+c1.metric("Algodón Bruto",   f"{bruto_total / 1000:,.1f} Tn")
+c2.metric("Fibra Producida", f"{fibra_total / 1000:,.1f} Tn")
+c3.metric(
+    "Rinde Desmote",
+    f"{rd_total:.1f}%",
+    delta=f"{rd_total - 24:.1f}pp vs mínimo (24%)",
+)
+c4.metric("Fardos",  f"{int(rem['cantidadproducidafardos'].sum()):,}")
+c5.metric("Campos",  rem["establecimiento"].nunique())
+c6.metric("Remitos", len(rem))
 
 st.divider()
 
@@ -484,7 +698,7 @@ with col_g1:
         labels={"bruto_tn": "Tn", "establecimiento": ""},
         color_discrete_sequence=px.colors.qualitative.Set2,
     )
-    fig.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0), legend_title="")
+    fig.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="")
     st.plotly_chart(fig, use_container_width=True)
 
 with col_g2:
@@ -498,73 +712,117 @@ with col_g2:
     )
     fig2.add_vline(x=24, line_dash="dot", line_color="orange", annotation_text="24%")
     fig2.add_vline(x=28, line_dash="dot", line_color="green",  annotation_text="28%")
-    fig2.update_layout(height=400, margin=dict(l=0, r=0, t=0, b=0), legend_title="")
+    fig2.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="")
     st.plotly_chart(fig2, use_container_width=True)
 
 if not vsem.empty and vsem["semana"].notna().any():
-    st.subheader("Remitos por semana (kg bruto)")
+    st.subheader("Remitos por semana (Tn bruto)")
+    vsem["bruto_tn"] = vsem["bruto_kg"] / 1000
     fig3 = px.bar(
-        vsem, x="semana", y="bruto_kg",
-        labels={"semana": "Semana", "bruto_kg": "kg Algodón Bruto"},
+        vsem, x="semana", y="bruto_tn",
+        labels={"semana": "Semana", "bruto_tn": "Tn Algodón Bruto"},
         color_discrete_sequence=["#2ecc71"],
+        text="bruto_tn",
     )
-    fig3.update_layout(height=280, margin=dict(l=0, r=0, t=0, b=0))
+    fig3.update_traces(texttemplate="%{text:,.1f}", textposition="outside")
+    fig3.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0))
     st.plotly_chart(fig3, use_container_width=True)
 
 st.divider()
 
 st.subheader("Producción por campo")
 disp_campo = vc.rename(columns={
-    "empresa": "Empresa", "establecimiento": "Campo", "sup_ha": "Sup (ha)",
-    "bruto_tn": "Bruto (Tn)", "rinde_kgha": "Rinde Bruto (kg/ha)",
-    "fibra_tn": "Fibra (Tn)", "rinde_desmote": "Rinde Desmote (%)",
-    "fardos": "Fardos", "ppf_kg": "Peso Prom Fardo (kg)",
-})[["Empresa", "Campo", "Sup (ha)", "Bruto (Tn)", "Rinde Bruto (kg/ha)",
-    "Fibra (Tn)", "Rinde Desmote (%)", "Fardos", "Peso Prom Fardo (kg)"]]
+    "empresa":       "Empresa",
+    "establecimiento":"Campo",
+    "sup_ha":        "Sup (ha)",
+    "bruto_tn":      "Bruto (Tn)",
+    "rinde_kgha":    "Rinde (kg/ha)",
+    "fibra_tn":      "Fibra (Tn)",
+    "rinde_desmote": "Rinde Desm. (%)",
+    "fardos":        "Fardos",
+    "ppf_kg":        "PP Fardo (kg)",
+    "remitos":       "Remitos",
+})[["Empresa", "Campo", "Sup (ha)", "Bruto (Tn)", "Rinde (kg/ha)",
+    "Fibra (Tn)", "Rinde Desm. (%)", "Fardos", "PP Fardo (kg)", "Remitos"]]
+
+disp_campo_tot = totales_row(disp_campo, "Empresa", label="TOTAL")
+n_campo = len(disp_campo)
 st.dataframe(
-    disp_campo.style
-        .format(fmt_num(disp_campo), na_rep="—")
-        .map(sem_rinde, subset=["Rinde Desmote (%)"]),
-    use_container_width=True, hide_index=True,
+    style_total_row(
+        disp_campo_tot.style
+            .format(fmt_num(disp_campo_tot), na_rep="—")
+            .map(sem_rinde, subset=["Rinde Desm. (%)"]),
+        n_campo,
+    ),
+    use_container_width=True,
+    hide_index=True,
 )
+download_btn(disp_campo, "produccion_campo.xlsx")
 
 st.subheader("Producción por lote")
 disp_lote = vl.rename(columns={
-    "empresa": "Empresa", "establecimiento": "Campo", "loteproduccion": "Lote",
-    "sup_ha": "Sup (ha)", "bruto_tn": "Bruto (Tn)", "rinde_kgha": "Rinde Bruto (kg/ha)",
-    "fibra_tn": "Fibra (Tn)", "rinde_desmote": "Rinde Desmote (%)", "fardos": "Fardos",
-})[["Empresa", "Campo", "Lote", "Sup (ha)", "Bruto (Tn)", "Rinde Bruto (kg/ha)",
-    "Fibra (Tn)", "Rinde Desmote (%)", "Fardos"]]
+    "empresa":         "Empresa",
+    "establecimiento": "Campo",
+    "loteproduccion":  "Lote",
+    "sup_ha":          "Sup (ha)",
+    "bruto_tn":        "Bruto (Tn)",
+    "rinde_kgha":      "Rinde (kg/ha)",
+    "fibra_tn":        "Fibra (Tn)",
+    "rinde_desmote":   "Rinde Desm. (%)",
+    "fardos":          "Fardos",
+})[["Empresa", "Campo", "Lote", "Sup (ha)", "Bruto (Tn)", "Rinde (kg/ha)",
+    "Fibra (Tn)", "Rinde Desm. (%)", "Fardos"]]
 st.dataframe(
     disp_lote.style
         .format(fmt_num(disp_lote), na_rep="—")
-        .map(sem_rinde, subset=["Rinde Desmote (%)"]),
-    use_container_width=True, hide_index=True,
+        .map(sem_rinde, subset=["Rinde Desm. (%)"]),
+    use_container_width=True,
+    hide_index=True,
 )
+download_btn(disp_lote, "produccion_lote.xlsx")
 
 st.subheader("Logística por desmotadora")
 disp_desm = vd.rename(columns={
-    "desmotadora": "Desmotadora", "empresa": "Empresa", "establecimiento": "Campo",
-    "entrega_kg": "Entregado (kg)", "fibra_kg": "Fibra (kg)",
-    "rinde_desmote": "Rinde (%)", "fardos": "Fardos", "ppf_kg": "Peso Prom Fardo (kg)",
+    "desmotadora":   "Desmotadora",
+    "empresa":       "Empresa",
+    "establecimiento":"Campo",
+    "entrega_kg":    "Entregado (kg)",
+    "fibra_kg":      "Fibra (kg)",
+    "rinde_desmote": "Rinde (%)",
+    "fardos":        "Fardos",
+    "ppf_kg":        "PP Fardo (kg)",
 })[["Desmotadora", "Empresa", "Campo", "Entregado (kg)", "Fibra (kg)",
-    "Rinde (%)", "Fardos", "Peso Prom Fardo (kg)"]]
+    "Rinde (%)", "Fardos", "PP Fardo (kg)"]]
 st.dataframe(
     disp_desm.style
         .format(fmt_num(disp_desm), na_rep="—")
         .map(sem_rinde, subset=["Rinde (%)"]),
-    use_container_width=True, hide_index=True,
+    use_container_width=True,
+    hide_index=True,
 )
+download_btn(disp_desm, "logistica_desmotadora.xlsx")
 
 st.subheader("Rinde por contratista")
 disp_cont = vcont.rename(columns={
     "contratistacosecha": "Contratista",
-    "bruto_kg": "Bruto (kg)", "fibra_kg": "Fibra (kg)",
-    "rinde_desmote": "Rinde (%)", "fardos": "Fardos",
+    "bruto_kg":           "Bruto (kg)",
+    "fibra_kg":           "Fibra (kg)",
+    "rinde_desmote":      "Rinde (%)",
+    "fardos":             "Fardos",
 })[["Contratista", "Bruto (kg)", "Fibra (kg)", "Rinde (%)", "Fardos"]]
 st.dataframe(
     disp_cont.style
         .format(fmt_num(disp_cont), na_rep="—")
         .map(sem_rinde, subset=["Rinde (%)"]),
-    use_container_width=True, hide_index=True,
+    use_container_width=True,
+    hide_index=True,
+)
+download_btn(disp_cont, "contratistas.xlsx")
+
+# ── footer ────────────────────────────────────────────────────────────────────
+st.divider()
+st.caption(
+    f"Datos con caché de 5 min · "
+    f"Actualizado: {st.session_state.last_update} · "
+    f"Economart / Grupo Duhau"
 )
