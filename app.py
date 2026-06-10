@@ -5,6 +5,7 @@ import requests
 import plotly.express as px
 import io
 import os
+import time
 import datetime
 from dotenv import load_dotenv
 
@@ -334,7 +335,16 @@ if "last_update" not in st.session_state:
     st.session_state.last_update = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
 with col_ts:
-    st.caption(f"Última actualización: {st.session_state.last_update} · caché 5 min")
+    ultimo_remito = (
+        raw_rem["fecha"].max().strftime("%d/%m/%Y")
+        if raw_rem is not None and not raw_rem["fecha"].isna().all()
+        else "—"
+    )
+    st.caption(
+        f"Última actualización: {st.session_state.last_update} · "
+        f"Remito más reciente: {ultimo_remito} · "
+        f"Auto-refresh cada 5 min"
+    )
 
 if sisa_error:
     st.warning(f"⚠️ Planificación SISA no disponible: {sisa_error}")
@@ -462,6 +472,36 @@ if not sisa.empty:
         min(pct_entrega / 100, 1.0),
         text=f"Entregado a desmotadora: {pct_entrega:.1f}% de lo producido",
     )
+
+    # stacked bar: entregado vs en establecimiento por campo, planificado como referencia
+    rc_melt = rc[["campo", "entregado_tn", "en_establecimiento"]].melt(
+        id_vars="campo",
+        value_vars=["entregado_tn", "en_establecimiento"],
+        var_name="estado", value_name="tn",
+    ).replace({
+        "entregado_tn":       "Entregado a Desm.",
+        "en_establecimiento": "En Establecimiento",
+    })
+    fig_rc = px.bar(
+        rc_melt,
+        x="campo", y="tn", color="estado", barmode="stack",
+        labels={"tn": "Tn", "campo": "", "estado": ""},
+        color_discrete_map={
+            "Entregado a Desm.":  "#2ecc71",
+            "En Establecimiento": "#f39c12",
+        },
+    )
+    fig_rc.add_scatter(
+        x=rc["campo"], y=rc["tn_planificadas"],
+        mode="markers", name="Planificado",
+        marker=dict(symbol="diamond", size=12, color="#2980b9",
+                    line=dict(width=1, color="#1a5276")),
+    )
+    fig_rc.update_layout(
+        height=380, margin=dict(l=0, r=0, t=10, b=40),
+        legend_title="", xaxis_tickangle=-30,
+    )
+    st.plotly_chart(fig_rc, use_container_width=True)
 
     st.divider()
 
@@ -826,3 +866,9 @@ st.caption(
     f"Actualizado: {st.session_state.last_update} · "
     f"Economart / Grupo Duhau"
 )
+
+# ── auto-refresh cada 5 minutos ───────────────────────────────────────────────
+time.sleep(300)
+st.cache_data.clear()
+st.session_state.pop("last_update", None)
+st.rerun()
