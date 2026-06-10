@@ -297,11 +297,126 @@ def agg_semanal(df):
     ).reset_index()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# UI — header
+# UI — CSS + helpers visuales
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.title("🌿 Control de Cosecha de Algodón")
-st.caption("Grupo Duhau · Campaña 2025/26 · Fuente: Finnegans API")
+st.markdown("""
+<style>
+/* Fondo sutil */
+[data-testid="stAppViewContainer"] > .main {
+    background: linear-gradient(160deg, #f4fdf7 0%, #edf9f2 60%, #f9fffc 100%);
+}
+[data-testid="stSidebar"] {
+    background: #ffffff;
+    border-right: 1px solid #e0f2e9;
+}
+
+/* Headers de sección */
+[data-testid="stAppViewContainer"] h2 {
+    color: #1a5c2a;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    border-bottom: 2px solid #2ecc71;
+    padding-bottom: 6px;
+    margin-bottom: 18px !important;
+}
+[data-testid="stAppViewContainer"] h3 {
+    color: #1a5c2a;
+    font-weight: 700;
+}
+
+/* KPI cards */
+.kpi-card {
+    background: white;
+    border-radius: 14px;
+    padding: 18px 20px 14px 20px;
+    box-shadow: 0 2px 14px rgba(0,0,0,0.07);
+    border-top: 3px solid #2ecc71;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    margin-bottom: 6px;
+    min-height: 96px;
+}
+.kpi-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 28px rgba(46,204,113,0.20);
+}
+.kpi-label {
+    font-size: 0.68rem;
+    color: #888;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-bottom: 7px;
+}
+.kpi-value {
+    font-size: 1.55rem;
+    font-weight: 900;
+    color: #111;
+    line-height: 1.15;
+}
+.kpi-delta {
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-top: 5px;
+}
+
+/* Botón actualizar */
+[data-testid="stBaseButton-secondary"] {
+    border: 1.5px solid #2ecc71 !important;
+    color: #1a5c2a !important;
+    border-radius: 20px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s !important;
+}
+[data-testid="stBaseButton-secondary"]:hover {
+    background: #2ecc71 !important;
+    color: white !important;
+}
+
+/* Botones de descarga */
+[data-testid="stDownloadButton"] button {
+    background: transparent !important;
+    border: 1px solid #2ecc71 !important;
+    color: #1a5c2a !important;
+    font-size: 0.78rem !important;
+    border-radius: 20px !important;
+    padding: 4px 14px !important;
+    transition: all 0.2s !important;
+}
+[data-testid="stDownloadButton"] button:hover {
+    background: #2ecc71 !important;
+    color: white !important;
+}
+
+/* Ocultar footer de Streamlit */
+footer { visibility: hidden; }
+#MainMenu { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
+
+def kpi_card(label, value, delta=None, delta_color="normal"):
+    delta_html = ""
+    if delta is not None:
+        s = str(delta).strip()
+        neg = s.startswith("-")
+        if delta_color == "normal":
+            color, arrow = ("#e74c3c", "▼") if neg else ("#27ae60", "▲")
+        elif delta_color == "inverse":
+            color, arrow = ("#27ae60", "▼") if neg else ("#e74c3c", "▲")
+        else:
+            color, arrow = "#95a5a6", "→"
+        delta_html = f'<div class="kpi-delta" style="color:{color}">{arrow} {s}</div>'
+    return (
+        f'<div class="kpi-card">'
+        f'<div class="kpi-label">{label}</div>'
+        f'<div class="kpi-value">{value}</div>'
+        f'{delta_html}'
+        f'</div>'
+    )
+
+
+# ── header ────────────────────────────────────────────────────────────────────
 
 col_btn, col_ts = st.columns([1, 9])
 with col_btn:
@@ -334,17 +449,43 @@ if raw_rem is None and raw_sisa is None:
 if "last_update" not in st.session_state:
     st.session_state.last_update = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
+ultimo_remito = (
+    raw_rem["fecha"].max().strftime("%d/%m/%Y")
+    if raw_rem is not None and not raw_rem["fecha"].isna().all()
+    else "—"
+)
+
 with col_ts:
-    ultimo_remito = (
-        raw_rem["fecha"].max().strftime("%d/%m/%Y")
-        if raw_rem is not None and not raw_rem["fecha"].isna().all()
-        else "—"
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #1a5c2a 0%, #27ae60 60%, #2ecc71 100%);
+            border-radius: 14px;
+            padding: 18px 28px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(46,204,113,0.25);
+        ">
+            <div>
+                <div style="color:white;font-size:1.55rem;font-weight:900;letter-spacing:-0.02em;line-height:1.1">
+                    🌿 Control de Cosecha de Algodón
+                </div>
+                <div style="color:rgba(255,255,255,0.82);font-size:0.85rem;margin-top:4px">
+                    Grupo Duhau · Campaña 2025/26 · Finnegans API
+                </div>
+            </div>
+            <div style="text-align:right;color:rgba(255,255,255,0.75);font-size:0.78rem;line-height:1.7">
+                <div>Actualizado: <b style="color:white">{st.session_state.last_update}</b></div>
+                <div>Último remito: <b style="color:white">{ultimo_remito}</b></div>
+                <div style="font-size:0.70rem">↺ auto-refresh cada 5 min</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.caption(
-        f"Última actualización: {st.session_state.last_update} · "
-        f"Remito más reciente: {ultimo_remito} · "
-        f"Auto-refresh cada 5 min"
-    )
+
+st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
 
 if sisa_error:
     st.warning(f"⚠️ Planificación SISA no disponible: {sisa_error}")
@@ -440,34 +581,19 @@ if not sisa.empty:
     pct_en_est   = tot_en_est / tot_prod * 100 if tot_prod > 0 else 0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Sup Sembrada",    f"{tot_semb:,.0f} ha")
-    c2.metric("Tn Planificadas", f"{tot_plan:,.1f} Tn")
-    c3.metric(
-        "Tn Producidas",
-        f"{tot_prod:,.1f} Tn",
-        delta=f"{tot_prod - tot_plan:+,.1f} Tn vs plan",
-    )
-    c4.metric(
-        "Entregado a Desm.",
-        f"{tot_entreg:,.1f} Tn",
-        delta=f"{pct_entrega:.0f}% del total prod.",
-        delta_color="off",
-    )
+    c1.markdown(kpi_card("Sup Sembrada", f"{tot_semb:,.0f} ha"), unsafe_allow_html=True)
+    c2.markdown(kpi_card("Tn Planificadas", f"{tot_plan:,.1f} Tn"), unsafe_allow_html=True)
+    c3.markdown(kpi_card("Tn Producidas", f"{tot_prod:,.1f} Tn",
+        delta=f"{tot_prod - tot_plan:+,.1f} Tn vs plan"), unsafe_allow_html=True)
+    c4.markdown(kpi_card("Entregado a Desm.", f"{tot_entreg:,.1f} Tn",
+        delta=f"{pct_entrega:.0f}% del total prod.", delta_color="off"), unsafe_allow_html=True)
 
     c5, c6, c7, _ = st.columns(4)
-    c5.metric(
-        "En Establecimiento",
-        f"{tot_en_est:,.1f} Tn",
-        delta=f"{pct_en_est:.0f}% sin entregar",
-        delta_color="inverse",
-    )
-    c6.metric("Rollos Producidos", f"{tot_rol_prod:,.0f}")
-    c7.metric(
-        "Rollos Cargados",
-        f"{tot_rol_carg:,.0f}",
-        delta=f"{tot_rol_carg - tot_rol_prod:+,.0f} vs prod.",
-        delta_color="off",
-    )
+    c5.markdown(kpi_card("En Establecimiento", f"{tot_en_est:,.1f} Tn",
+        delta=f"{pct_en_est:.0f}% sin entregar", delta_color="inverse"), unsafe_allow_html=True)
+    c6.markdown(kpi_card("Rollos Producidos", f"{tot_rol_prod:,.0f}"), unsafe_allow_html=True)
+    c7.markdown(kpi_card("Rollos Cargados", f"{tot_rol_carg:,.0f}",
+        delta=f"{tot_rol_carg - tot_rol_prod:+,.0f} vs prod.", delta_color="off"), unsafe_allow_html=True)
 
     # progress bar: % entregado del total producido
     st.progress(
@@ -560,24 +686,17 @@ else:
     avance_gl    = tot_sup_cos / tot_sup_semb * 100 if tot_sup_semb > 0 else 0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Sup Planificada", f"{tot_sup_plan:,.0f} ha")
-    c2.metric("Sup Sembrada",    f"{tot_sup_semb:,.0f} ha")
-    c3.metric("Sup Cosechada",   f"{tot_sup_cos:,.0f} ha")
-    c4.metric(
-        "Avance Global",
-        f"{avance_gl:.1f}%",
-        delta=f"{avance_gl - 100:.1f}% restante",
-        delta_color="inverse",
-    )
+    c1.markdown(kpi_card("Sup Planificada", f"{tot_sup_plan:,.0f} ha"), unsafe_allow_html=True)
+    c2.markdown(kpi_card("Sup Sembrada",    f"{tot_sup_semb:,.0f} ha"), unsafe_allow_html=True)
+    c3.markdown(kpi_card("Sup Cosechada",   f"{tot_sup_cos:,.0f} ha"), unsafe_allow_html=True)
+    c4.markdown(kpi_card("Avance Global", f"{avance_gl:.1f}%",
+        delta=f"{avance_gl - 100:.1f}% restante", delta_color="inverse"), unsafe_allow_html=True)
 
     c5, c6, c7, _ = st.columns(4)
-    c5.metric("Tn Planificadas", f"{tot_tn_plan:,.0f}")
-    c6.metric(
-        "Tn Producidas",
-        f"{tot_tn_prod:,.0f}",
-        delta=f"{tot_tn_prod - tot_tn_plan:+,.0f} vs plan",
-    )
-    c7.metric("Resto a Cosechar", f"{tot_resto:,.0f} ha")
+    c5.markdown(kpi_card("Tn Planificadas", f"{tot_tn_plan:,.0f}"), unsafe_allow_html=True)
+    c6.markdown(kpi_card("Tn Producidas", f"{tot_tn_prod:,.0f}",
+        delta=f"{tot_tn_prod - tot_tn_plan:+,.0f} vs plan"), unsafe_allow_html=True)
+    c7.markdown(kpi_card("Resto a Cosechar", f"{tot_resto:,.0f} ha"), unsafe_allow_html=True)
 
     st.progress(
         min(avance_gl / 100, 1.0),
@@ -599,10 +718,15 @@ else:
             labels={"avance_pct": "%", "lugar": ""},
             text="avance_pct",
         )
-        fig_av.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig_av.update_traces(
+            texttemplate="%{text:.1f}%", textposition="outside",
+            hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
+        )
         fig_av.update_layout(
             height=420, margin=dict(l=0, r=40, t=0, b=0),
             coloraxis_showscale=False,
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            hoverlabel=dict(bgcolor="white", font_size=13, bordercolor="#2ecc71"),
         )
         st.plotly_chart(fig_av, use_container_width=True)
 
@@ -619,8 +743,13 @@ else:
             labels={"kg_ha": "kg/ha", "lugar": "", "tipo": ""},
             color_discrete_map={"Planificado": "#aed6f1", "Producido": "#2ecc71"},
         )
+        fig_rinde.update_traces(
+            hovertemplate="<b>%{x}</b><br>%{data.name}: <b>%{y:,.0f} kg/ha</b><extra></extra>",
+        )
         fig_rinde.update_layout(
             height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            hoverlabel=dict(bgcolor="white", font_size=13, bordercolor="#aed6f1"),
         )
         st.plotly_chart(fig_rinde, use_container_width=True)
 
@@ -718,18 +847,15 @@ fibra_total = rem["cantidadproducidakilos"].sum()
 rd_total    = fibra_total / bruto_total * 100 if bruto_total > 0 else 0
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Algodón Bruto",   f"{bruto_total / 1000:,.1f} Tn")
-c2.metric("Fibra Producida", f"{fibra_total / 1000:,.1f} Tn")
-c3.metric(
-    "Rinde Desmote",
-    f"{rd_total:.1f}%",
-    delta=f"{rd_total - 24:.1f}pp vs ref. 24%",
-)
+c1.markdown(kpi_card("Algodón Bruto",   f"{bruto_total / 1000:,.1f} Tn"), unsafe_allow_html=True)
+c2.markdown(kpi_card("Fibra Producida", f"{fibra_total / 1000:,.1f} Tn"), unsafe_allow_html=True)
+c3.markdown(kpi_card("Rinde Desmote", f"{rd_total:.1f}%",
+    delta=f"{rd_total - 24:.1f}pp vs ref. 24%"), unsafe_allow_html=True)
 
 c4, c5, c6 = st.columns(3)
-c4.metric("Fardos",  f"{int(rem['cantidadproducidafardos'].sum()):,}")
-c5.metric("Campos",  rem["establecimiento"].nunique())
-c6.metric("Remitos", len(rem))
+c4.markdown(kpi_card("Fardos",  f"{int(rem['cantidadproducidafardos'].sum()):,}"), unsafe_allow_html=True)
+c5.markdown(kpi_card("Campos",  str(rem['establecimiento'].nunique())), unsafe_allow_html=True)
+c6.markdown(kpi_card("Remitos", str(len(rem))), unsafe_allow_html=True)
 
 st.divider()
 
@@ -744,7 +870,14 @@ with col_g1:
         labels={"bruto_tn": "Tn", "establecimiento": ""},
         color_discrete_sequence=px.colors.qualitative.Set2,
     )
-    fig.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="")
+    fig.update_traces(
+        hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:,.1f} Tn</b><extra></extra>",
+    )
+    fig.update_layout(
+        height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(bgcolor="white", font_size=13),
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 with col_g2:
@@ -758,7 +891,14 @@ with col_g2:
     )
     fig2.add_vline(x=24, line_dash="dot", line_color="orange", annotation_text="24%")
     fig2.add_vline(x=28, line_dash="dot", line_color="green",  annotation_text="28%")
-    fig2.update_layout(height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="")
+    fig2.update_traces(
+        hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:.1f}%</b><extra></extra>",
+    )
+    fig2.update_layout(
+        height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(bgcolor="white", font_size=13),
+    )
     st.plotly_chart(fig2, use_container_width=True)
 
 if not vsem.empty and vsem["semana"].notna().any():
@@ -770,8 +910,15 @@ if not vsem.empty and vsem["semana"].notna().any():
         color_discrete_sequence=["#2ecc71"],
         text="bruto_tn",
     )
-    fig3.update_traces(texttemplate="%{text:,.1f}", textposition="outside")
-    fig3.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0))
+    fig3.update_traces(
+        texttemplate="%{text:,.1f}", textposition="outside",
+        hovertemplate="Semana %{x|%d/%m}<br><b>%{y:,.1f} Tn</b><extra></extra>",
+    )
+    fig3.update_layout(
+        height=300, margin=dict(l=0, r=0, t=10, b=0),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(bgcolor="white", font_size=13),
+    )
     st.plotly_chart(fig3, use_container_width=True)
 
 st.divider()
