@@ -59,7 +59,7 @@ def fetch_remitos():
     df.columns = df.columns.str.lower()
     return df
 
-@st.cache_data(ttl=300, show_spinner="Cargando planificación SISA...")
+@st.cache_data(ttl=300, show_spinner="Cargando planificación...")
 def fetch_sisa():
     token = get_token()
     resp = requests.get(
@@ -647,7 +647,7 @@ with col_ts:
 st.markdown("<div style='margin-top:8px'></div>", unsafe_allow_html=True)
 
 if sisa_error:
-    st.warning(f"⚠️ Planificación SISA no disponible: {sisa_error}")
+    st.warning(f"⚠️ Planificación no disponible: {sisa_error}")
 if rem_error:
     st.warning(f"⚠️ Remitos no disponibles: {rem_error}")
 
@@ -725,7 +725,7 @@ with st.sidebar:
             )
         rem = raw_rem[mask].copy()
 
-    st.caption(f"SISA: {len(sisa)} lotes")
+    st.caption(f"Planificación: {len(sisa)} lotes")
     st.caption(f"Remitos: {len(rem)} registros")
     if d_desde and d_hasta:
         sin_fecha = rem["fecha"].isna().sum()
@@ -750,7 +750,7 @@ if "Cruzada" in pagina:
     # ── Por Campo ────────────────────────────────────────────────────────────
     with tab_campo:
         if sisa.empty:
-            st.info("Sin datos SISA para los filtros seleccionados.")
+            st.info("Sin datos de planificación para los filtros seleccionados.")
         else:
             gc = cruce_campo(sisa, rem)
 
@@ -762,7 +762,7 @@ if "Cruzada" in pagina:
             tot_rol_carg = gc["rollos_cargados"].sum()
 
             c1, c2, c3, c4 = st.columns(4)
-            c1.markdown(kpi_card("Tn Producidas (SISA)", f"{tot_prod:,.1f}"), unsafe_allow_html=True)
+            c1.markdown(kpi_card("Tn Producidas", f"{tot_prod:,.1f}"), unsafe_allow_html=True)
             c2.markdown(kpi_card("Entregado a Desm.", f"{tot_entr:,.1f} Tn",
                 delta=f"{pct_entr:.0f}% entregado", delta_color="off"), unsafe_allow_html=True)
             c3.markdown(kpi_card("En Establecimiento", f"{tot_en_est:,.1f} Tn"), unsafe_allow_html=True)
@@ -775,14 +775,14 @@ if "Cruzada" in pagina:
                     value_vars=["tn_producidas", "bruto_tn", "en_estab_tn"],
                     var_name="origen", value_name="tn",
                 ).replace({
-                    "tn_producidas": "Producido (SISA)",
+                    "tn_producidas": "Producido",
                     "bruto_tn":      "Entregado (Remitos)",
                     "en_estab_tn":   "En Establecimiento",
                 }),
                 x="campo", y="tn", color="origen", barmode="group",
                 labels={"tn": "Tn", "campo": "", "origen": ""},
                 color_discrete_map={
-                    "Producido (SISA)":    "#aed6f1",
+                    "Producido":    "#aed6f1",
                     "Entregado (Remitos)": "#2ecc71",
                     "En Establecimiento":  "#f39c12",
                 },
@@ -799,7 +799,7 @@ if "Cruzada" in pagina:
             cols_disp = {
                 "campo":            "Campo",
                 "tn_planificadas":  "Tn Plan",
-                "tn_producidas":    "Tn Prod (SISA)",
+                "tn_producidas":    "Tn Producidas",
                 "cumpl_plan_pct":   "% vs Plan",
                 "avance_cos_pct":   "Avance Cos %",
                 "bruto_tn":         "Entregado Tn",
@@ -829,7 +829,7 @@ if "Cruzada" in pagina:
     # ── Por Lote ─────────────────────────────────────────────────────────────
     with tab_lote:
         if sisa.empty:
-            st.info("Sin datos SISA para los filtros seleccionados.")
+            st.info("Sin datos de planificación para los filtros seleccionados.")
         else:
             gl = cruce_lote(sisa, rem)
 
@@ -878,7 +878,7 @@ if "Cruzada" in pagina:
             cols_l = {
                 "campo":            "Campo",
                 "lote":             "Lote",
-                "tn_producidas":    "Tn Prod (SISA)",
+                "tn_producidas":    "Tn Producidas",
                 "sup_cosechada":    "Sup Cos ha",
                 "avance_pct":       "Avance %",
                 "rollos_producidos":"Rollos Prod",
@@ -899,7 +899,7 @@ if "Cruzada" in pagina:
     # ── Rollos ───────────────────────────────────────────────────────────────
     with tab_rollos:
         if sisa.empty:
-            st.info("Sin datos SISA para los filtros seleccionados.")
+            st.info("Sin datos de planificación para los filtros seleccionados.")
         else:
             gc_r = cruce_campo(sisa, rem)[
                 ["campo", "rollos_producidos", "rollos_cargados", "delta_rollos", "pct_rollos_carg"]
@@ -914,13 +914,13 @@ if "Cruzada" in pagina:
                         value_vars=["rollos_producidos", "rollos_cargados"],
                         var_name="tipo", value_name="rollos",
                     ).replace({
-                        "rollos_producidos": "Producidos (SISA)",
+                        "rollos_producidos": "Producidos",
                         "rollos_cargados":   "Cargados (Remitos)",
                     }),
                     x="campo", y="rollos", color="tipo", barmode="group",
                     labels={"rollos": "Rollos", "campo": "", "tipo": ""},
                     color_discrete_map={
-                        "Producidos (SISA)":  "#aed6f1",
+                        "Producidos":  "#aed6f1",
                         "Cargados (Remitos)": "#2ecc71",
                     },
                     text_auto=True,
@@ -936,7 +936,7 @@ if "Cruzada" in pagina:
 
                 disp_r = gc_r.rename(columns={
                     "campo":             "Campo",
-                    "rollos_producidos": "Producidos (SISA)",
+                    "rollos_producidos": "Producidos",
                     "rollos_cargados":   "Cargados (Remitos)",
                     "delta_rollos":      "Diferencia",
                     "pct_rollos_carg":   "% Cargado",
@@ -960,7 +960,7 @@ if "Cruzada" in pagina:
             gf = cruce_fechas(sisa, rem)
 
             if gf.empty:
-                st.info("No hay columnas de fecha de cosecha en SISA.")
+                st.info("No hay columnas de fecha de cosecha disponibles.")
             else:
                 gantt_df = gf.dropna(subset=["primera_cosecha", "ultimo_remito"]).rename(columns={
                     "campo":          "Campo",
@@ -995,8 +995,8 @@ if "Cruzada" in pagina:
 
                 rename_f = {
                     "campo":               "Campo",
-                    "primera_cosecha":     "1ra Cosecha (SISA)",
-                    "ultima_cosecha":      "Últ Cosecha (SISA)",
+                    "primera_cosecha":     "1ra Cosecha",
+                    "ultima_cosecha":      "Últ Cosecha",
                     "primer_remito":       "1er Remito",
                     "ultimo_remito":       "Últ Remito",
                     "cant_remitos":        "N° Remitos",
@@ -1136,7 +1136,7 @@ if "Fibra" in pagina:
     cols_fib = {
         "campo":                "Campo",
         "tn_planificadas":      "Tn Plan",
-        "tn_producidas":        "Tn Prod (SISA)",
+        "tn_producidas":        "Tn Producidas",
         "bruto_tn":             "Tn Entr. Desm.",
         "en_campo_tn":          "Tn en Campo",
         "por_cosechar_tn":      "Tn por Cosechar",
@@ -1271,7 +1271,7 @@ if not sisa.empty:
     download_btn(disp_rc, "resumen_general.xlsx")
 
 else:
-    st.info("Sin datos de planificación SISA para los filtros seleccionados.")
+    st.info("Sin datos de planificación para los filtros seleccionados.")
 
 st.divider()
 
@@ -1397,7 +1397,7 @@ else:
     )
     download_btn(disp_sisa, "planificacion_campo.xlsx")
 
-    with st.expander("Ver detalle por lote (SISA)"):
+    with st.expander("Ver detalle por lote"):
         cols_lote = [
             "empresasucursal", "lugar", "lote", "actividad",
             "superficieplanificada", "superficiesembrada", "superficiecosechada",
