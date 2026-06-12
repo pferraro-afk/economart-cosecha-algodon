@@ -118,9 +118,10 @@ def fmt_num(df):
     for col in df.select_dtypes("number").columns:
         vals = df[col].dropna()
         if len(vals) > 0 and ((vals % 1) == 0).all():
-            result[col] = "{:,.0f}"
+            fmt = "{:,.0f}"
         else:
-            result[col] = "{:,.2f}"
+            fmt = "{:,.2f}"
+        result[col] = lambda v, f=fmt: "—" if pd.isna(v) else f.format(v)
     return result
 
 def to_excel_bytes(df):
@@ -295,6 +296,107 @@ def agg_semanal(df):
         bruto_kg = ("pesoneto",               "sum"),
         fardos   = ("cantidadproducidafardos", "sum"),
     ).reset_index()
+
+def cruce_campo(sisa_df, rem_df):
+    sisa_agg = sisa_df.groupby("lugar").agg(
+        sup_sembrada      = ("superficiesembrada",          "sum"),
+        sup_cosechada     = ("superficiecosechada",         "sum"),
+        tn_planificadas   = ("tnplanificados",              "sum"),
+        tn_producidas     = ("tnproducidos",                "sum"),
+        rollos_producidos = ("cantidadproducidasecundaria", "sum"),
+    ).reset_index().rename(columns={"lugar": "campo"})
+    sisa_agg["avance_cos_pct"] = (
+        sisa_agg["sup_cosechada"] / sisa_agg["sup_sembrada"] * 100
+    ).where(sisa_agg["sup_sembrada"] > 0)
+
+    rem_agg = (
+        rem_df.groupby("establecimiento")
+        .agg(
+            bruto_tn      = ("pesoneto", "sum"),
+            cant_remitos  = ("pesoneto", "count"),
+            primer_remito = ("fecha",    "min"),
+            ultimo_remito = ("fecha",    "max"),
+        )
+        .reset_index()
+        .rename(columns={"establecimiento": "campo"})
+    )
+    rem_agg["bruto_tn"] /= 1000
+
+    if "producto" in rem_df.columns and "cantidadstock2" in rem_df.columns:
+        rem_rol = rem_df[rem_df["producto"].str.contains("Rollos", case=False, na=False)]
+        rol_agg = (
+            rem_rol.groupby("establecimiento")
+            .agg(rollos_cargados=("cantidadstock2", "sum"))
+            .reset_index()
+            .rename(columns={"establecimiento": "campo"})
+        )
+    else:
+        rol_agg = pd.DataFrame(columns=["campo", "rollos_cargados"])
+
+    g = sisa_agg.merge(rem_agg, on="campo", how="left")
+    g = g.merge(rol_agg, on="campo", how="left")
+    for col in ["bruto_tn", "rollos_cargados", "cant_remitos"]:
+        g[col] = g[col].fillna(0)
+    g["en_estab_tn"]     = (g["tn_producidas"] - g["bruto_tn"]).clip(lower=0)
+    g["pct_entregado"]   = (g["bruto_tn"]      / g["tn_producidas"]   * 100).where(g["tn_producidas"]   > 0)
+    g["cumpl_plan_pct"]  = (g["tn_producidas"] / g["tn_planificadas"] * 100).where(g["tn_planificadas"] > 0)
+    g["delta_rollos"]    = g["rollos_cargados"] - g["rollos_producidos"]
+    g["pct_rollos_carg"] = (g["rollos_cargados"] / g["rollos_producidos"] * 100).where(g["rollos_producidos"] > 0)
+    return g.sort_values("campo")
+
+
+def cruce_lote(sisa_df, rem_df):
+    sisa_l = sisa_df[
+        ["lugar", "lote", "tnproducidos", "superficiecosechada",
+         "porcentajeavance", "cantidadproducidasecundaria"]
+    ].rename(columns={
+        "lugar":                      "campo",
+        "tnproducidos":               "tn_producidas",
+        "superficiecosechada":        "sup_cosechada",
+        "porcentajeavance":           "avance_pct",
+        "cantidadproducidasecundaria":"rollos_producidos",
+    })
+    rem_l = (
+        rem_df.groupby(["establecimiento", "loteproduccion"])
+        .agg(bruto_tn=("pesoneto", "sum"), remitos=("pesoneto", "count"))
+        .reset_index()
+        .rename(columns={"establecimiento": "campo", "loteproduccion": "lote"})
+    )
+    rem_l["bruto_tn"] /= 1000
+    g = sisa_l.merge(rem_l, on=["campo", "lote"], how="outer")
+    g["bruto_tn"]      = g["bruto_tn"].fillna(0)
+    g["pct_entregado"] = (g["bruto_tn"] / g["tn_producidas"] * 100).where(
+        g["tn_producidas"].notna() & (g["tn_producidas"] > 0)
+    )
+    return g.sort_values(["campo", "lote"])
+
+
+def cruce_fechas(sisa_df, rem_df):
+    date_cols = [c for c in ["fechaprimeracosecha", "fechaultimacosecha"] if c in sisa_df.columns]
+    if not date_cols:
+        return pd.DataFrame()
+    sisa_df = sisa_df.copy()
+    for col in date_cols:
+        sisa_df[col] = pd.to_datetime(sisa_df[col], errors="coerce")
+    agg_spec = {}
+    if "fechaprimeracosecha" in date_cols:
+        agg_spec["primera_cosecha"] = ("fechaprimeracosecha", "min")
+    if "fechaultimacosecha" in date_cols:
+        agg_spec["ultima_cosecha"] = ("fechaultimacosecha", "max")
+    sisa_f = sisa_df.groupby("lugar").agg(**agg_spec).reset_index().rename(columns={"lugar": "campo"})
+    rem_f = (
+        rem_df[rem_df["fecha"].notna()]
+        .groupby("establecimiento")
+        .agg(primer_remito=("fecha", "min"), ultimo_remito=("fecha", "max"), cant_remitos=("fecha", "count"))
+        .reset_index()
+        .rename(columns={"establecimiento": "campo"})
+    )
+    g = sisa_f.merge(rem_f, on="campo", how="left")
+    if "primera_cosecha" in g.columns and "primer_remito" in g.columns:
+        g["dias_cosecha_remito"] = (g["primer_remito"] - g["primera_cosecha"]).dt.days
+    if "primera_cosecha" in g.columns and "ultimo_remito" in g.columns:
+        g["duracion_total_dias"] = (g["ultimo_remito"] - g["primera_cosecha"]).dt.days
+    return g.sort_values("campo")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # UI — CSS + helpers visuales
@@ -496,6 +598,12 @@ if rem_error:
 
 with st.sidebar:
     st.header("Filtros")
+    pagina = st.radio(
+        "Pantalla",
+        ["📊 Dashboard", "🔗 Información Cruzada"],
+        label_visibility="collapsed",
+    )
+    st.markdown("---")
 
     empresas_sisa = set(raw_sisa["empresasucursal"].dropna().unique()) if raw_sisa is not None else set()
     empresas_rem  = set(raw_rem["empresa"].dropna().unique()) if raw_rem is not None else set()
@@ -566,6 +674,271 @@ with st.sidebar:
         sin_fecha = rem["fecha"].isna().sum()
         aviso = f" · {sin_fecha} sin fecha" if sin_fecha > 0 else ""
         st.caption(f"Período: {d_desde.strftime('%d/%m')} → {d_hasta.strftime('%d/%m')}{aviso}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PÁGINA — INFORMACIÓN CRUZADA
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if "Cruzada" in pagina:
+    st.header("Información Cruzada")
+
+    if sisa.empty and rem.empty:
+        st.warning("Sin datos para los filtros seleccionados.")
+        st.stop()
+
+    tab_campo, tab_lote, tab_rollos, tab_fechas = st.tabs(
+        ["Por Campo", "Por Lote", "Rollos", "Fechas"]
+    )
+
+    # ── Por Campo ────────────────────────────────────────────────────────────
+    with tab_campo:
+        if sisa.empty:
+            st.info("Sin datos SISA para los filtros seleccionados.")
+        else:
+            gc = cruce_campo(sisa, rem)
+
+            tot_prod     = gc["tn_producidas"].sum()
+            tot_entr     = gc["bruto_tn"].sum()
+            tot_en_est   = gc["en_estab_tn"].sum()
+            pct_entr     = tot_entr / tot_prod * 100 if tot_prod > 0 else 0
+            tot_rol_prod = gc["rollos_producidos"].sum()
+            tot_rol_carg = gc["rollos_cargados"].sum()
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.markdown(kpi_card("Tn Producidas (SISA)", f"{tot_prod:,.1f}"), unsafe_allow_html=True)
+            c2.markdown(kpi_card("Entregado a Desm.", f"{tot_entr:,.1f} Tn",
+                delta=f"{pct_entr:.0f}% entregado", delta_color="off"), unsafe_allow_html=True)
+            c3.markdown(kpi_card("En Establecimiento", f"{tot_en_est:,.1f} Tn"), unsafe_allow_html=True)
+            c4.markdown(kpi_card("Δ Rollos (Carg − Prod)", f"{tot_rol_carg - tot_rol_prod:+,.0f}",
+                delta_color="off"), unsafe_allow_html=True)
+
+            fig_gc = px.bar(
+                gc.melt(
+                    id_vars="campo",
+                    value_vars=["tn_producidas", "bruto_tn", "en_estab_tn"],
+                    var_name="origen", value_name="tn",
+                ).replace({
+                    "tn_producidas": "Producido (SISA)",
+                    "bruto_tn":      "Entregado (Remitos)",
+                    "en_estab_tn":   "En Establecimiento",
+                }),
+                x="campo", y="tn", color="origen", barmode="group",
+                labels={"tn": "Tn", "campo": "", "origen": ""},
+                color_discrete_map={
+                    "Producido (SISA)":    "#aed6f1",
+                    "Entregado (Remitos)": "#2ecc71",
+                    "En Establecimiento":  "#f39c12",
+                },
+                height=380,
+            )
+            fig_gc.update_layout(
+                margin=dict(l=0, r=0, t=10, b=40), legend_title="",
+                xaxis_tickangle=-30,
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_gc, use_container_width=True)
+            st.divider()
+
+            cols_disp = {
+                "campo":            "Campo",
+                "tn_planificadas":  "Tn Plan",
+                "tn_producidas":    "Tn Prod (SISA)",
+                "cumpl_plan_pct":   "% vs Plan",
+                "avance_cos_pct":   "Avance Cos %",
+                "bruto_tn":         "Entregado Tn",
+                "pct_entregado":    "% Entregado",
+                "en_estab_tn":      "En Estab Tn",
+                "rollos_producidos":"Rollos Prod",
+                "rollos_cargados":  "Rollos Carg",
+                "delta_rollos":     "Δ Rollos",
+                "pct_rollos_carg":  "% Rollos Carg",
+                "cant_remitos":     "N° Remitos",
+            }
+            disp_gc = gc.rename(columns=cols_disp)[list(cols_disp.values())]
+            disp_gc_tot = totales_row(disp_gc, "Campo")
+            n_gc = len(disp_gc)
+            st.dataframe(
+                style_total_row(
+                    disp_gc_tot.style
+                        .format(fmt_num(disp_gc_tot), na_rep="—")
+                        .map(sem_avance, subset=["Avance Cos %"])
+                        .map(sem_avance_entrega, subset=["% Entregado"]),
+                    n_gc,
+                ),
+                use_container_width=True, hide_index=True,
+            )
+            download_btn(disp_gc, "cruce_campo.xlsx")
+
+    # ── Por Lote ─────────────────────────────────────────────────────────────
+    with tab_lote:
+        if sisa.empty:
+            st.info("Sin datos SISA para los filtros seleccionados.")
+        else:
+            gl = cruce_lote(sisa, rem)
+
+            gl_scatter = gl.dropna(subset=["tn_producidas"])
+            if not gl_scatter.empty:
+                max_val = max(
+                    gl_scatter["tn_producidas"].max(),
+                    gl_scatter["bruto_tn"].max() if gl_scatter["bruto_tn"].max() > 0 else 1,
+                )
+                fig_gl = px.scatter(
+                    gl_scatter,
+                    x="tn_producidas", y="bruto_tn",
+                    color="campo", hover_data=["lote", "avance_pct"],
+                    labels={
+                        "tn_producidas": "Tn Producidas (SISA)",
+                        "bruto_tn":      "Entregado Remitos (Tn)",
+                        "campo":         "Campo",
+                    },
+                    height=420,
+                )
+                fig_gl.add_scatter(
+                    x=[0, max_val], y=[0, max_val],
+                    mode="lines",
+                    line=dict(dash="dot", color="#aaa", width=1),
+                    name="Producido = Entregado", showlegend=True,
+                )
+                fig_gl.update_layout(
+                    margin=dict(l=0, r=0, t=10, b=0), legend_title="",
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_gl, use_container_width=True)
+                st.divider()
+
+            cols_l = {
+                "campo":            "Campo",
+                "lote":             "Lote",
+                "tn_producidas":    "Tn Prod (SISA)",
+                "sup_cosechada":    "Sup Cos ha",
+                "avance_pct":       "Avance %",
+                "rollos_producidos":"Rollos Prod",
+                "bruto_tn":         "Entregado Tn",
+                "remitos":          "N° Remitos",
+                "pct_entregado":    "% Entregado",
+            }
+            disp_gl = gl.rename(columns=cols_l)[[v for v in cols_l.values() if v in gl.rename(columns=cols_l).columns]]
+            st.dataframe(
+                disp_gl.style
+                    .format(fmt_num(disp_gl), na_rep="—")
+                    .map(sem_avance, subset=[c for c in ["Avance %"] if c in disp_gl.columns])
+                    .map(sem_avance_entrega, subset=[c for c in ["% Entregado"] if c in disp_gl.columns]),
+                use_container_width=True, hide_index=True,
+            )
+            download_btn(disp_gl, "cruce_lote.xlsx")
+
+    # ── Rollos ───────────────────────────────────────────────────────────────
+    with tab_rollos:
+        if sisa.empty:
+            st.info("Sin datos SISA para los filtros seleccionados.")
+        else:
+            gc_r = cruce_campo(sisa, rem)[
+                ["campo", "rollos_producidos", "rollos_cargados", "delta_rollos", "pct_rollos_carg"]
+            ]
+            gc_r = gc_r[(gc_r["rollos_producidos"] > 0) | (gc_r["rollos_cargados"] > 0)]
+            if gc_r.empty:
+                st.info("No hay datos de rollos para los campos seleccionados.")
+            else:
+                fig_gr = px.bar(
+                    gc_r.melt(
+                        id_vars="campo",
+                        value_vars=["rollos_producidos", "rollos_cargados"],
+                        var_name="tipo", value_name="rollos",
+                    ).replace({
+                        "rollos_producidos": "Producidos (SISA)",
+                        "rollos_cargados":   "Cargados (Remitos)",
+                    }),
+                    x="campo", y="rollos", color="tipo", barmode="group",
+                    labels={"rollos": "Rollos", "campo": "", "tipo": ""},
+                    color_discrete_map={
+                        "Producidos (SISA)":  "#aed6f1",
+                        "Cargados (Remitos)": "#2ecc71",
+                    },
+                    text_auto=True,
+                    height=360,
+                )
+                fig_gr.update_layout(
+                    margin=dict(l=0, r=0, t=10, b=40), legend_title="",
+                    xaxis_tickangle=-30,
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_gr, use_container_width=True)
+                st.divider()
+
+                disp_r = gc_r.rename(columns={
+                    "campo":             "Campo",
+                    "rollos_producidos": "Producidos (SISA)",
+                    "rollos_cargados":   "Cargados (Remitos)",
+                    "delta_rollos":      "Diferencia",
+                    "pct_rollos_carg":   "% Cargado",
+                })
+                disp_r_tot = totales_row(disp_r, "Campo")
+                n_r = len(disp_r)
+                st.dataframe(
+                    style_total_row(
+                        disp_r_tot.style.format(fmt_num(disp_r_tot)),
+                        n_r,
+                    ),
+                    use_container_width=True, hide_index=True,
+                )
+                download_btn(disp_r, "cruce_rollos.xlsx")
+
+    # ── Fechas ───────────────────────────────────────────────────────────────
+    with tab_fechas:
+        if sisa.empty or rem.empty:
+            st.info("Se necesitan datos de ambas fuentes para el cruce de fechas.")
+        else:
+            gf = cruce_fechas(sisa, rem)
+
+            if gf.empty:
+                st.info("No hay columnas de fecha de cosecha en SISA.")
+            else:
+                gantt_df = gf.dropna(subset=["primera_cosecha", "ultimo_remito"]).rename(columns={
+                    "campo":          "Campo",
+                    "primera_cosecha":"Inicio",
+                    "ultimo_remito":  "Fin",
+                })
+                if not gantt_df.empty:
+                    fig_gf = px.timeline(
+                        gantt_df,
+                        x_start="Inicio", x_end="Fin", y="Campo",
+                        color="Campo",
+                        color_discrete_sequence=px.colors.qualitative.Set2,
+                        height=max(300, len(gantt_df) * 40 + 80),
+                    )
+                    fig_gf.update_layout(
+                        showlegend=False,
+                        margin=dict(l=0, r=0, t=10, b=0),
+                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(fig_gf, use_container_width=True)
+                    st.divider()
+
+                gf_disp = gf.copy()
+                for col in ["primera_cosecha", "ultima_cosecha", "primer_remito", "ultimo_remito"]:
+                    if col in gf_disp.columns:
+                        gf_disp[col] = gf_disp[col].dt.strftime("%d/%m/%Y").where(gf_disp[col].notna(), "—")
+                for col in ["cant_remitos", "dias_cosecha_remito", "duracion_total_dias"]:
+                    if col in gf_disp.columns:
+                        gf_disp[col] = gf_disp[col].apply(
+                            lambda v: "—" if pd.isna(v) else f"{int(v):,}"
+                        )
+
+                rename_f = {
+                    "campo":               "Campo",
+                    "primera_cosecha":     "1ra Cosecha (SISA)",
+                    "ultima_cosecha":      "Últ Cosecha (SISA)",
+                    "primer_remito":       "1er Remito",
+                    "ultimo_remito":       "Últ Remito",
+                    "cant_remitos":        "N° Remitos",
+                    "dias_cosecha_remito": "Días 1ra Cos → 1er Rem",
+                    "duracion_total_dias": "Duración Total (días)",
+                }
+                disp_f = gf_disp.rename(columns=rename_f)[[v for k, v in rename_f.items() if k in gf_disp.columns]]
+                st.dataframe(disp_f, use_container_width=True, hide_index=True)
+                download_btn(gf_disp.rename(columns=rename_f), "cruce_fechas.xlsx")
+
+    st.stop()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECCIÓN 0 — RESUMEN GENERAL
