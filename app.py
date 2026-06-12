@@ -398,6 +398,63 @@ def cruce_fechas(sisa_df, rem_df):
         g["duracion_total_dias"] = (g["ultimo_remito"] - g["primera_cosecha"]).dt.days
     return g.sort_values("campo")
 
+
+def estimacion_fibra(sisa_df, rem_df):
+    rem_agg = rem_df.groupby("establecimiento").agg(
+        bruto_kg = ("pesoneto",               "sum"),
+        fibra_kg = ("cantidadproducidakilos", "sum"),
+        fardos   = ("cantidadproducidafardos","sum"),
+    ).reset_index().rename(columns={"establecimiento": "campo"})
+    rem_agg["rinde_real_pct"] = (rem_agg["fibra_kg"] / rem_agg["bruto_kg"] * 100).where(rem_agg["bruto_kg"] > 0)
+    rem_agg["bruto_tn"]      = rem_agg["bruto_kg"] / 1000
+    rem_agg["fibra_cert_tn"] = rem_agg["fibra_kg"] / 1000
+
+    global_rinde = (
+        rem_df["cantidadproducidakilos"].sum() / rem_df["pesoneto"].sum() * 100
+        if rem_df["pesoneto"].sum() > 0 else 0
+    )
+
+    if sisa_df.empty:
+        rem_agg["tn_planificadas"]       = np.nan
+        rem_agg["tn_producidas"]         = np.nan
+        rem_agg["en_campo_tn"]           = np.nan
+        rem_agg["por_cosechar_tn"]       = np.nan
+        rem_agg["sup_sembrada"]          = np.nan
+        rem_agg["sup_cosechada"]         = np.nan
+        rem_agg["fibra_en_campo_tn"]     = np.nan
+        rem_agg["fibra_por_cosechar_tn"] = np.nan
+        rem_agg["fibra_total_est_tn"]    = rem_agg["fibra_cert_tn"]
+        rem_agg["pct_fibra_cert"]        = 100.0
+        return rem_agg.sort_values("campo")
+
+    sisa_agg = sisa_df.groupby("lugar").agg(
+        tn_planificadas = ("tnplanificados",      "sum"),
+        tn_producidas   = ("tnproducidos",        "sum"),
+        sup_sembrada    = ("superficiesembrada",  "sum"),
+        sup_cosechada   = ("superficiecosechada", "sum"),
+    ).reset_index().rename(columns={"lugar": "campo"})
+
+    g = sisa_agg.merge(
+        rem_agg[["campo", "bruto_tn", "fibra_cert_tn", "rinde_real_pct", "fardos"]],
+        on="campo", how="left",
+    )
+    g["bruto_tn"]       = g["bruto_tn"].fillna(0)
+    g["fibra_cert_tn"]  = g["fibra_cert_tn"].fillna(0)
+    g["fardos"]         = g["fardos"].fillna(0)
+    g["rinde_real_pct"] = g["rinde_real_pct"].fillna(global_rinde)
+
+    g["en_campo_tn"]     = (g["tn_producidas"] - g["bruto_tn"]).clip(lower=0)
+    g["por_cosechar_tn"] = (g["tn_planificadas"] - g["tn_producidas"]).clip(lower=0)
+    g["avance_cos_pct"]  = (g["sup_cosechada"] / g["sup_sembrada"] * 100).where(g["sup_sembrada"] > 0)
+
+    g["fibra_en_campo_tn"]     = g["en_campo_tn"]     * g["rinde_real_pct"] / 100
+    g["fibra_por_cosechar_tn"] = g["por_cosechar_tn"] * g["rinde_real_pct"] / 100
+    g["fibra_total_est_tn"]    = g["fibra_cert_tn"] + g["fibra_en_campo_tn"] + g["fibra_por_cosechar_tn"]
+    g["pct_fibra_cert"]        = (g["fibra_cert_tn"] / g["fibra_total_est_tn"] * 100).where(g["fibra_total_est_tn"] > 0)
+
+    return g.sort_values("campo")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # UI — CSS + helpers visuales
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -600,7 +657,7 @@ with st.sidebar:
     st.header("Filtros")
     pagina = st.radio(
         "Pantalla",
-        ["📊 Dashboard", "🔗 Información Cruzada"],
+        ["📊 Dashboard", "🔗 Información Cruzada", "🧮 Estimación de Fibra"],
         label_visibility="collapsed",
     )
     st.markdown("---")
@@ -949,6 +1006,167 @@ if "Cruzada" in pagina:
                 disp_f = gf_disp.rename(columns=rename_f)[[v for k, v in rename_f.items() if k in gf_disp.columns]]
                 st.dataframe(disp_f, use_container_width=True, hide_index=True)
                 download_btn(gf_disp.rename(columns=rename_f), "cruce_fechas.xlsx")
+
+    st.stop()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PÁGINA — ESTIMACIÓN DE FIBRA
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if "Fibra" in pagina:
+    st.header("Estimación de Fibra")
+
+    if rem.empty:
+        st.warning("Se necesitan datos de remitos para estimar la fibra.")
+        st.stop()
+
+    gef = estimacion_fibra(sisa, rem)
+
+    rinde_global = (
+        rem["cantidadproducidakilos"].sum() / rem["pesoneto"].sum() * 100
+        if rem["pesoneto"].sum() > 0 else 0
+    )
+    fibra_cert   = gef["fibra_cert_tn"].sum()
+    fibra_campo  = gef["fibra_en_campo_tn"].sum() if not gef["fibra_en_campo_tn"].isna().all() else 0
+    fibra_resto  = gef["fibra_por_cosechar_tn"].sum() if not gef["fibra_por_cosechar_tn"].isna().all() else 0
+    fibra_total  = gef["fibra_total_est_tn"].sum()
+    fardos_total = gef["fardos"].sum()
+    tn_plan      = gef["tn_planificadas"].sum() if "tn_planificadas" in gef.columns else 0
+    pct_cert     = fibra_cert / fibra_total * 100 if fibra_total > 0 else 0
+    avance_cos   = (
+        gef["sup_cosechada"].sum() / gef["sup_sembrada"].sum() * 100
+        if ("sup_cosechada" in gef.columns and gef["sup_sembrada"].sum() > 0) else None
+    )
+
+    # ── KPIs ─────────────────────────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(kpi_card(
+        "Fibra Certificada (Desm.)", f"{fibra_cert:,.1f} Tn",
+        delta=f"{pct_cert:.0f}% del estimado total", delta_color="off",
+    ), unsafe_allow_html=True)
+    c2.markdown(kpi_card(
+        "Fibra en Campo (est.)", f"{fibra_campo:,.1f} Tn",
+        delta="Cosechado · no entregado a desm.", delta_color="off",
+    ), unsafe_allow_html=True)
+    c3.markdown(kpi_card(
+        "Fibra por Cosechar (est.)", f"{fibra_resto:,.1f} Tn",
+        delta="Algodón planificado aún en pie", delta_color="off",
+    ), unsafe_allow_html=True)
+    c4.markdown(kpi_card(
+        "Total Fibra Estimada", f"{fibra_total:,.1f} Tn",
+        delta=f"{fardos_total:,.0f} fardos certificados", delta_color="off",
+    ), unsafe_allow_html=True)
+
+    c5, c6, c7, _ = st.columns(4)
+    c5.markdown(kpi_card(
+        "Rinde Real al Desmote", f"{rinde_global:.1f}%",
+        delta=f"{rinde_global - 24:.1f}pp vs ref. 24%",
+    ), unsafe_allow_html=True)
+    c6.markdown(kpi_card("Algodón Planificado", f"{tn_plan:,.1f} Tn"), unsafe_allow_html=True)
+    c7.markdown(kpi_card(
+        "Avance de Cosecha", f"{avance_cos:.1f}%" if avance_cos is not None else "—",
+    ), unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Stacked bar: fibra por campo ──────────────────────────────────────────
+    st.subheader("Fibra estimada por campo (Tn)")
+    gef_plot = gef[gef["fibra_total_est_tn"] > 0].sort_values("fibra_total_est_tn", ascending=True)
+    if not gef_plot.empty:
+        fig_fib = px.bar(
+            gef_plot.melt(
+                id_vars="campo",
+                value_vars=["fibra_cert_tn", "fibra_en_campo_tn", "fibra_por_cosechar_tn"],
+                var_name="origen", value_name="fibra_tn",
+            ).replace({
+                "fibra_cert_tn":         "Certificada (Desm.)",
+                "fibra_en_campo_tn":     "En Campo (est.)",
+                "fibra_por_cosechar_tn": "Por Cosechar (est.)",
+            }),
+            x="fibra_tn", y="campo", color="origen", barmode="stack",
+            orientation="h",
+            labels={"fibra_tn": "Tn Fibra", "campo": "", "origen": ""},
+            color_discrete_map={
+                "Certificada (Desm.)":  "#2ecc71",
+                "En Campo (est.)":      "#f39c12",
+                "Por Cosechar (est.)":  "#aed6f1",
+            },
+            height=max(360, len(gef_plot) * 38 + 100),
+        )
+        fig_fib.update_layout(
+            margin=dict(l=0, r=20, t=10, b=0), legend_title="",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_fib, use_container_width=True)
+
+    # ── Bar: rinde al desmote por campo ──────────────────────────────────────
+    rinde_campo = rem.groupby("establecimiento").agg(
+        bruto_kg=("pesoneto",              "sum"),
+        fibra_kg=("cantidadproducidakilos","sum"),
+    ).reset_index()
+    rinde_campo["rinde_pct"] = (rinde_campo["fibra_kg"] / rinde_campo["bruto_kg"] * 100).where(rinde_campo["bruto_kg"] > 0)
+    rinde_campo = rinde_campo.dropna(subset=["rinde_pct"]).sort_values("rinde_pct")
+
+    if not rinde_campo.empty:
+        st.subheader("Rinde al desmote por campo (%)")
+        fig_rinde = px.bar(
+            rinde_campo,
+            x="rinde_pct", y="establecimiento", orientation="h",
+            color="rinde_pct",
+            color_continuous_scale=["#fadbd8", "#fef9e7", "#d5f5e3"],
+            range_color=[20, 32],
+            labels={"rinde_pct": "%", "establecimiento": ""},
+            text="rinde_pct",
+            height=max(300, len(rinde_campo) * 38 + 100),
+        )
+        fig_rinde.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+        fig_rinde.add_vline(x=24, line_dash="dot", line_color="orange", annotation_text="24%")
+        fig_rinde.add_vline(x=28, line_dash="dot", line_color="green", annotation_text="28%")
+        fig_rinde.update_layout(
+            margin=dict(l=0, r=60, t=10, b=0),
+            coloraxis_showscale=False,
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_rinde, use_container_width=True)
+
+    st.divider()
+
+    # ── Tabla detalle ────────────────────────────────────────────────────────
+    st.subheader("Detalle por campo")
+    cols_fib = {
+        "campo":                "Campo",
+        "tn_planificadas":      "Tn Plan",
+        "tn_producidas":        "Tn Prod (SISA)",
+        "bruto_tn":             "Tn Entr. Desm.",
+        "en_campo_tn":          "Tn en Campo",
+        "por_cosechar_tn":      "Tn por Cosechar",
+        "rinde_real_pct":       "Rinde Real %",
+        "fibra_cert_tn":        "Fibra Cert. Tn",
+        "fibra_en_campo_tn":    "Fibra Campo Tn",
+        "fibra_por_cosechar_tn":"Fibra Cos. Tn",
+        "fibra_total_est_tn":   "Total Fibra Est. Tn",
+        "pct_fibra_cert":       "% Certificado",
+    }
+    disp_fib = gef.rename(columns=cols_fib)[
+        [v for k, v in cols_fib.items() if k in gef.columns]
+    ]
+    disp_fib_tot = totales_row(disp_fib, "Campo")
+    n_fib = len(disp_fib)
+    st.dataframe(
+        style_total_row(
+            disp_fib_tot.style
+                .format(fmt_num(disp_fib_tot), na_rep="—")
+                .map(sem_rinde, subset=[c for c in ["Rinde Real %"] if c in disp_fib_tot.columns]),
+            n_fib,
+        ),
+        use_container_width=True, hide_index=True,
+    )
+    st.caption(
+        f"**Metodología:** Fibra Certificada = confirmada por la desmotadora (remitos). "
+        f"Fibra en Campo y Por Cosechar = estimaciones usando el rinde real al desmote ({rinde_global:.1f}%). "
+        f"Todas las proyecciones son estimativas."
+    )
+    download_btn(disp_fib, "estimacion_fibra.xlsx")
 
     st.stop()
 
