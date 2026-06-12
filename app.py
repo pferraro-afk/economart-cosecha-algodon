@@ -776,32 +776,44 @@ if "Cruzada" in pagina:
         else:
             gl = cruce_lote(sisa, rem)
 
-            gl_scatter = gl.dropna(subset=["tn_producidas"])
-            if not gl_scatter.empty:
-                max_val = max(
-                    gl_scatter["tn_producidas"].max(),
-                    gl_scatter["bruto_tn"].max() if gl_scatter["bruto_tn"].max() > 0 else 1,
-                )
-                fig_gl = px.scatter(
-                    gl_scatter,
-                    x="tn_producidas", y="bruto_tn",
-                    color="campo", hover_data=["lote", "avance_pct"],
+            gl_plot = gl.dropna(subset=["tn_producidas"]).copy()
+            gl_plot = gl_plot[gl_plot["tn_producidas"] > 0].sort_values(
+                ["campo", "pct_entregado"], ascending=[True, False]
+            )
+            if not gl_plot.empty:
+                fig_gl = px.bar(
+                    gl_plot,
+                    x="pct_entregado",
+                    y="lote",
+                    color="campo",
+                    orientation="h",
+                    custom_data=["tn_producidas", "bruto_tn", "avance_pct", "campo"],
                     labels={
-                        "tn_producidas": "Tn Producidas (SISA)",
-                        "bruto_tn":      "Entregado Remitos (Tn)",
+                        "pct_entregado": "% Entregado vs Producido",
+                        "lote":          "Lote",
                         "campo":         "Campo",
                     },
-                    height=420,
+                    height=max(400, len(gl_plot) * 26),
                 )
-                fig_gl.add_scatter(
-                    x=[0, max_val], y=[0, max_val],
-                    mode="lines",
-                    line=dict(dash="dot", color="#aaa", width=1),
-                    name="Producido = Entregado", showlegend=True,
+                fig_gl.update_traces(
+                    hovertemplate=(
+                        "<b>%{y}</b> — %{customdata[3]}<br>"
+                        "Entregado: %{x:.1f}%<br>"
+                        "Tn producidas: %{customdata[0]:,.0f}<br>"
+                        "Tn entregadas: %{customdata[1]:,.0f}<br>"
+                        "Avance cosecha: %{customdata[2]:.1f}%"
+                        "<extra></extra>"
+                    )
+                )
+                fig_gl.add_vline(
+                    x=100,
+                    line_dash="dot", line_color="#aaa", line_width=1,
+                    annotation_text="100%", annotation_position="top right",
                 )
                 fig_gl.update_layout(
-                    margin=dict(l=0, r=0, t=10, b=0), legend_title="",
+                    margin=dict(l=0, r=20, t=10, b=0), legend_title="",
                     plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    yaxis=dict(tickfont=dict(size=11)),
                 )
                 st.plotly_chart(fig_gl, use_container_width=True)
                 st.divider()
