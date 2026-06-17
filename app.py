@@ -79,8 +79,8 @@ def fetch_sisa():
 # ── cleaning ──────────────────────────────────────────────────────────────────
 
 def clean_remitos(df):
-    for col in ["pesoneto", "cantidadproducidakilos", "cantidadproducidafardos",
-                "rindefibra", "supsembrada", "cantidadstock2"]:
+    for col in ["pesoneto", "cantidad", "cantidadproducidakilos", "cantidadproducidafardos",
+                "rindefibra", "supsembrada", "cantidadstock2", "cantidadconsumo"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col].replace("NULL", None), errors="coerce")
     if "depositodestino" in df.columns:
@@ -193,26 +193,25 @@ def sem_avance_entrega(val):
 
 def resumen_cruzado(sisa_df, rem_df):
     sisa_agg = sisa_df.groupby("lugar").agg(
-        sup_sembrada      = ("superficiesembrada",           "sum"),
-        tn_planificadas   = ("tnplanificados",               "sum"),
-        tn_producidas     = ("tnproducidos",                 "sum"),
-        rollos_producidos = ("cantidadproducidasecundaria",  "sum"),
+        sup_sembrada      = ("superficiesembrada",          "sum"),
+        sup_cosechada     = ("superficiecosechada",         "sum"),
+        tn_planificadas   = ("tnplanificados",              "sum"),
+        tn_producidas     = ("tnproducidos",                "sum"),
     ).reset_index().rename(columns={"lugar": "campo"})
+    sisa_agg["pct_cosechado"] = (
+        sisa_agg["sup_cosechada"] / sisa_agg["sup_sembrada"] * 100
+    ).where(sisa_agg["sup_sembrada"] > 0)
 
     rem_agg = rem_df.groupby("establecimiento").agg(
-        entregado_tn=("pesoneto", "sum"),
+        entregado_tn  = ("cantidad",        "sum"),
+        tn_desmotadas = ("cantidadconsumo", "sum"),
     ).reset_index().rename(columns={"establecimiento": "campo"})
-    rem_agg["entregado_tn"] /= 1000
-
-    rem_rollos = rem_df[rem_df["producto"].str.contains("Rollos", case=False, na=False)]
-    rol_agg = rem_rollos.groupby("establecimiento").agg(
-        rollos_cargados=("cantidadstock2", "sum"),
-    ).reset_index().rename(columns={"establecimiento": "campo"})
+    rem_agg["entregado_tn"]  /= 1000
+    rem_agg["tn_desmotadas"] /= 1000
 
     g = sisa_agg.merge(rem_agg, on="campo", how="left")
-    g = g.merge(rol_agg, on="campo", how="left")
     g["entregado_tn"]       = g["entregado_tn"].fillna(0)
-    g["rollos_cargados"]    = g["rollos_cargados"].fillna(0)
+    g["tn_desmotadas"]      = g["tn_desmotadas"].fillna(0)
     g["en_establecimiento"] = (g["tn_producidas"] - g["entregado_tn"]).clip(lower=0)
     g["avance_entrega_pct"] = (g["entregado_tn"] / g["tn_producidas"] * 100).where(g["tn_producidas"] > 0)
     g["cumpl_plan_pct"]     = (g["tn_producidas"] / g["tn_planificadas"] * 100).where(g["tn_planificadas"] > 0)
@@ -243,57 +242,61 @@ def sup_lote(df):
 
 def agg_campo_rem(df, sup):
     g = df.groupby(["empresa", "establecimiento"]).agg(
-        bruto_kg = ("pesoneto",               "sum"),
-        fibra_kg = ("cantidadproducidakilos",  "sum"),
-        fardos   = ("cantidadproducidafardos", "sum"),
-        remitos  = ("pesoneto",               "count"),
+        bruto_kg    = ("cantidad",               "sum"),
+        consumo_kg  = ("cantidadconsumo",        "sum"),
+        fibra_kg    = ("cantidadproducidakilos",  "sum"),
+        fardos      = ("cantidadproducidafardos", "sum"),
+        remitos     = ("cantidad",               "count"),
     ).reset_index()
     ha = sup.groupby(["empresa", "establecimiento"])["sup_ha"].sum().reset_index()
     g = g.merge(ha, on=["empresa", "establecimiento"], how="left")
     g["bruto_tn"]      = g["bruto_kg"] / 1000
     g["fibra_tn"]      = g["fibra_kg"] / 1000
     g["rinde_kgha"]    = (g["bruto_kg"] / g["sup_ha"]).where(g["sup_ha"] > 0)
-    g["rinde_desmote"] = (g["fibra_kg"] / g["bruto_kg"] * 100).where(g["bruto_kg"] > 0)
+    g["rinde_desmote"] = (g["fibra_kg"] / g["consumo_kg"] * 100).where(g["consumo_kg"] > 0)
     g["ppf_kg"]        = (g["bruto_kg"] / g["fardos"]).where(g["fardos"] > 0)
     return g.sort_values(["empresa", "establecimiento"])
 
 def agg_lote(df, sup):
     g = df.groupby(["empresa", "establecimiento", "loteproduccion"]).agg(
-        bruto_kg = ("pesoneto",               "sum"),
-        fibra_kg = ("cantidadproducidakilos",  "sum"),
-        fardos   = ("cantidadproducidafardos", "sum"),
+        bruto_kg   = ("cantidad",               "sum"),
+        consumo_kg = ("cantidadconsumo",        "sum"),
+        fibra_kg   = ("cantidadproducidakilos",  "sum"),
+        fardos     = ("cantidadproducidafardos", "sum"),
     ).reset_index()
     g = g.merge(sup, on=["empresa", "establecimiento", "loteproduccion"], how="left")
     g["bruto_tn"]      = g["bruto_kg"] / 1000
     g["fibra_tn"]      = g["fibra_kg"] / 1000
     g["rinde_kgha"]    = (g["bruto_kg"] / g["sup_ha"]).where(g["sup_ha"] > 0)
-    g["rinde_desmote"] = (g["fibra_kg"] / g["bruto_kg"] * 100).where(g["bruto_kg"] > 0)
+    g["rinde_desmote"] = (g["fibra_kg"] / g["consumo_kg"] * 100).where(g["consumo_kg"] > 0)
     return g.sort_values(["empresa", "establecimiento", "loteproduccion"])
 
 def agg_desmotadora(df):
     g = df.groupby(["desmotadora", "empresa", "establecimiento"]).agg(
-        entrega_kg = ("pesoneto",              "sum"),
+        entrega_kg = ("cantidad",              "sum"),
+        consumo_kg = ("cantidadconsumo",       "sum"),
         fibra_kg   = ("cantidadproducidakilos","sum"),
         fardos     = ("cantidadproducidafardos","sum"),
     ).reset_index()
-    g["rinde_desmote"] = (g["fibra_kg"] / g["entrega_kg"] * 100).where(g["entrega_kg"] > 0)
+    g["rinde_desmote"] = (g["fibra_kg"] / g["consumo_kg"] * 100).where(g["consumo_kg"] > 0)
     g["ppf_kg"]        = (g["entrega_kg"] / g["fardos"]).where(g["fardos"] > 0)
     return g.sort_values(["desmotadora", "establecimiento"])
 
 def agg_contratista(df):
     g = df.groupby("contratistacosecha").agg(
-        bruto_kg = ("pesoneto",               "sum"),
-        fibra_kg = ("cantidadproducidakilos",  "sum"),
-        fardos   = ("cantidadproducidafardos", "sum"),
+        bruto_kg   = ("cantidad",               "sum"),
+        consumo_kg = ("cantidadconsumo",        "sum"),
+        fibra_kg   = ("cantidadproducidakilos",  "sum"),
+        fardos     = ("cantidadproducidafardos", "sum"),
     ).reset_index()
-    g["rinde_desmote"] = (g["fibra_kg"] / g["bruto_kg"] * 100).where(g["bruto_kg"] > 0)
+    g["rinde_desmote"] = (g["fibra_kg"] / g["consumo_kg"] * 100).where(g["consumo_kg"] > 0)
     return g.sort_values("bruto_kg", ascending=False)
 
 def agg_semanal(df):
     g = df.copy()
     g["semana"] = g["fecha"].dt.to_period("W").dt.start_time
     return g.groupby("semana").agg(
-        bruto_kg = ("pesoneto",               "sum"),
+        bruto_kg = ("cantidad",               "sum"),
         fardos   = ("cantidadproducidafardos", "sum"),
     ).reset_index()
 
@@ -312,8 +315,8 @@ def cruce_campo(sisa_df, rem_df):
     rem_agg = (
         rem_df.groupby("establecimiento")
         .agg(
-            bruto_tn      = ("pesoneto", "sum"),
-            cant_remitos  = ("pesoneto", "count"),
+            bruto_tn      = ("cantidad", "sum"),
+            cant_remitos  = ("cantidad", "count"),
             primer_remito = ("fecha",    "min"),
             ultimo_remito = ("fecha",    "max"),
         )
@@ -358,7 +361,7 @@ def cruce_lote(sisa_df, rem_df):
     })
     rem_l = (
         rem_df.groupby(["establecimiento", "loteproduccion"])
-        .agg(bruto_tn=("pesoneto", "sum"), remitos=("pesoneto", "count"))
+        .agg(bruto_tn=("cantidad", "sum"), remitos=("cantidad", "count"))
         .reset_index()
         .rename(columns={"establecimiento": "campo", "loteproduccion": "lote"})
     )
@@ -598,11 +601,6 @@ if rem_error:
 
 with st.sidebar:
     st.header("Filtros")
-    pagina = st.radio(
-        "Pantalla",
-        ["📊 Dashboard", "🔗 Información Cruzada"],
-        label_visibility="collapsed",
-    )
     st.markdown("---")
 
     empresas_sisa = set(raw_sisa["empresasucursal"].dropna().unique()) if raw_sisa is not None else set()
@@ -675,285 +673,22 @@ with st.sidebar:
         aviso = f" · {sin_fecha} sin fecha" if sin_fecha > 0 else ""
         st.caption(f"Período: {d_desde.strftime('%d/%m')} → {d_hasta.strftime('%d/%m')}{aviso}")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PÁGINA — INFORMACIÓN CRUZADA
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── pre-compute aggregations ──────────────────────────────────────────────────
 
-if "Cruzada" in pagina:
-    st.header("Información Cruzada")
-
-    if sisa.empty and rem.empty:
-        st.warning("Sin datos para los filtros seleccionados.")
-        st.stop()
-
-    tab_campo, tab_lote, tab_rollos, tab_fechas = st.tabs(
-        ["Por Campo", "Por Lote", "Rollos", "Fechas"]
-    )
-
-    # ── Por Campo ────────────────────────────────────────────────────────────
-    with tab_campo:
-        if sisa.empty:
-            st.info("Sin datos SISA para los filtros seleccionados.")
-        else:
-            gc = cruce_campo(sisa, rem)
-
-            tot_prod     = gc["tn_producidas"].sum()
-            tot_entr     = gc["bruto_tn"].sum()
-            tot_en_est   = gc["en_estab_tn"].sum()
-            pct_entr     = tot_entr / tot_prod * 100 if tot_prod > 0 else 0
-            tot_rol_prod = gc["rollos_producidos"].sum()
-            tot_rol_carg = gc["rollos_cargados"].sum()
-
-            c1, c2, c3, c4 = st.columns(4)
-            c1.markdown(kpi_card("Tn Producidas (SISA)", f"{tot_prod:,.1f}"), unsafe_allow_html=True)
-            c2.markdown(kpi_card("Entregado a Desm.", f"{tot_entr:,.1f} Tn",
-                delta=f"{pct_entr:.0f}% entregado", delta_color="off"), unsafe_allow_html=True)
-            c3.markdown(kpi_card("En Establecimiento", f"{tot_en_est:,.1f} Tn"), unsafe_allow_html=True)
-            c4.markdown(kpi_card("Δ Rollos (Carg − Prod)", f"{tot_rol_carg - tot_rol_prod:+,.0f}",
-                delta_color="off"), unsafe_allow_html=True)
-
-            fig_gc = px.bar(
-                gc.melt(
-                    id_vars="campo",
-                    value_vars=["tn_producidas", "bruto_tn", "en_estab_tn"],
-                    var_name="origen", value_name="tn",
-                ).replace({
-                    "tn_producidas": "Producido (SISA)",
-                    "bruto_tn":      "Entregado (Remitos)",
-                    "en_estab_tn":   "En Establecimiento",
-                }),
-                x="campo", y="tn", color="origen", barmode="group",
-                labels={"tn": "Tn", "campo": "", "origen": ""},
-                color_discrete_map={
-                    "Producido (SISA)":    "#aed6f1",
-                    "Entregado (Remitos)": "#2ecc71",
-                    "En Establecimiento":  "#f39c12",
-                },
-                height=380,
-            )
-            fig_gc.update_layout(
-                margin=dict(l=0, r=0, t=10, b=40), legend_title="",
-                xaxis_tickangle=-30,
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig_gc, use_container_width=True)
-            st.divider()
-
-            cols_disp = {
-                "campo":            "Campo",
-                "tn_planificadas":  "Tn Plan",
-                "tn_producidas":    "Tn Prod (SISA)",
-                "cumpl_plan_pct":   "% vs Plan",
-                "avance_cos_pct":   "Avance Cos %",
-                "bruto_tn":         "Entregado Tn",
-                "pct_entregado":    "% Entregado",
-                "en_estab_tn":      "En Estab Tn",
-                "rollos_producidos":"Rollos Prod",
-                "rollos_cargados":  "Rollos Carg",
-                "delta_rollos":     "Δ Rollos",
-                "pct_rollos_carg":  "% Rollos Carg",
-                "cant_remitos":     "N° Remitos",
-            }
-            disp_gc = gc.rename(columns=cols_disp)[list(cols_disp.values())]
-            disp_gc_tot = totales_row(disp_gc, "Campo")
-            n_gc = len(disp_gc)
-            st.dataframe(
-                style_total_row(
-                    disp_gc_tot.style
-                        .format(fmt_num(disp_gc_tot), na_rep="—")
-                        .map(sem_avance, subset=["Avance Cos %"])
-                        .map(sem_avance_entrega, subset=["% Entregado"]),
-                    n_gc,
-                ),
-                use_container_width=True, hide_index=True,
-            )
-            download_btn(disp_gc, "cruce_campo.xlsx")
-
-    # ── Por Lote ─────────────────────────────────────────────────────────────
-    with tab_lote:
-        if sisa.empty:
-            st.info("Sin datos SISA para los filtros seleccionados.")
-        else:
-            gl = cruce_lote(sisa, rem)
-
-            gl_plot = gl.dropna(subset=["tn_producidas"]).copy()
-            gl_plot = gl_plot[gl_plot["tn_producidas"] > 0].sort_values(
-                ["campo", "pct_entregado"], ascending=[True, False]
-            )
-            if not gl_plot.empty:
-                fig_gl = px.bar(
-                    gl_plot,
-                    x="pct_entregado",
-                    y="lote",
-                    color="campo",
-                    orientation="h",
-                    custom_data=["tn_producidas", "bruto_tn", "avance_pct", "campo"],
-                    labels={
-                        "pct_entregado": "% Entregado vs Producido",
-                        "lote":          "Lote",
-                        "campo":         "Campo",
-                    },
-                    height=max(400, len(gl_plot) * 26),
-                )
-                fig_gl.update_traces(
-                    hovertemplate=(
-                        "<b>%{y}</b> — %{customdata[3]}<br>"
-                        "Entregado: %{x:.1f}%<br>"
-                        "Tn producidas: %{customdata[0]:,.0f}<br>"
-                        "Tn entregadas: %{customdata[1]:,.0f}<br>"
-                        "Avance cosecha: %{customdata[2]:.1f}%"
-                        "<extra></extra>"
-                    )
-                )
-                fig_gl.add_vline(
-                    x=100,
-                    line_dash="dot", line_color="#aaa", line_width=1,
-                    annotation_text="100%", annotation_position="top right",
-                )
-                fig_gl.update_layout(
-                    margin=dict(l=0, r=20, t=10, b=0), legend_title="",
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    yaxis=dict(tickfont=dict(size=11)),
-                )
-                st.plotly_chart(fig_gl, use_container_width=True)
-                st.divider()
-
-            cols_l = {
-                "campo":            "Campo",
-                "lote":             "Lote",
-                "tn_producidas":    "Tn Prod (SISA)",
-                "sup_cosechada":    "Sup Cos ha",
-                "avance_pct":       "Avance %",
-                "rollos_producidos":"Rollos Prod",
-                "bruto_tn":         "Entregado Tn",
-                "remitos":          "N° Remitos",
-                "pct_entregado":    "% Entregado",
-            }
-            disp_gl = gl.rename(columns=cols_l)[[v for v in cols_l.values() if v in gl.rename(columns=cols_l).columns]]
-            st.dataframe(
-                disp_gl.style
-                    .format(fmt_num(disp_gl), na_rep="—")
-                    .map(sem_avance, subset=[c for c in ["Avance %"] if c in disp_gl.columns])
-                    .map(sem_avance_entrega, subset=[c for c in ["% Entregado"] if c in disp_gl.columns]),
-                use_container_width=True, hide_index=True,
-            )
-            download_btn(disp_gl, "cruce_lote.xlsx")
-
-    # ── Rollos ───────────────────────────────────────────────────────────────
-    with tab_rollos:
-        if sisa.empty:
-            st.info("Sin datos SISA para los filtros seleccionados.")
-        else:
-            gc_r = cruce_campo(sisa, rem)[
-                ["campo", "rollos_producidos", "rollos_cargados", "delta_rollos", "pct_rollos_carg"]
-            ]
-            gc_r = gc_r[(gc_r["rollos_producidos"] > 0) | (gc_r["rollos_cargados"] > 0)]
-            if gc_r.empty:
-                st.info("No hay datos de rollos para los campos seleccionados.")
-            else:
-                fig_gr = px.bar(
-                    gc_r.melt(
-                        id_vars="campo",
-                        value_vars=["rollos_producidos", "rollos_cargados"],
-                        var_name="tipo", value_name="rollos",
-                    ).replace({
-                        "rollos_producidos": "Producidos (SISA)",
-                        "rollos_cargados":   "Cargados (Remitos)",
-                    }),
-                    x="campo", y="rollos", color="tipo", barmode="group",
-                    labels={"rollos": "Rollos", "campo": "", "tipo": ""},
-                    color_discrete_map={
-                        "Producidos (SISA)":  "#aed6f1",
-                        "Cargados (Remitos)": "#2ecc71",
-                    },
-                    text_auto=True,
-                    height=360,
-                )
-                fig_gr.update_layout(
-                    margin=dict(l=0, r=0, t=10, b=40), legend_title="",
-                    xaxis_tickangle=-30,
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig_gr, use_container_width=True)
-                st.divider()
-
-                disp_r = gc_r.rename(columns={
-                    "campo":             "Campo",
-                    "rollos_producidos": "Producidos (SISA)",
-                    "rollos_cargados":   "Cargados (Remitos)",
-                    "delta_rollos":      "Diferencia",
-                    "pct_rollos_carg":   "% Cargado",
-                })
-                disp_r_tot = totales_row(disp_r, "Campo")
-                n_r = len(disp_r)
-                st.dataframe(
-                    style_total_row(
-                        disp_r_tot.style.format(fmt_num(disp_r_tot)),
-                        n_r,
-                    ),
-                    use_container_width=True, hide_index=True,
-                )
-                download_btn(disp_r, "cruce_rollos.xlsx")
-
-    # ── Fechas ───────────────────────────────────────────────────────────────
-    with tab_fechas:
-        if sisa.empty or rem.empty:
-            st.info("Se necesitan datos de ambas fuentes para el cruce de fechas.")
-        else:
-            gf = cruce_fechas(sisa, rem)
-
-            if gf.empty:
-                st.info("No hay columnas de fecha de cosecha en SISA.")
-            else:
-                gantt_df = gf.dropna(subset=["primera_cosecha", "ultimo_remito"]).rename(columns={
-                    "campo":          "Campo",
-                    "primera_cosecha":"Inicio",
-                    "ultimo_remito":  "Fin",
-                })
-                if not gantt_df.empty:
-                    fig_gf = px.timeline(
-                        gantt_df,
-                        x_start="Inicio", x_end="Fin", y="Campo",
-                        color="Campo",
-                        color_discrete_sequence=px.colors.qualitative.Set2,
-                        height=max(300, len(gantt_df) * 40 + 80),
-                    )
-                    fig_gf.update_layout(
-                        showlegend=False,
-                        margin=dict(l=0, r=0, t=10, b=0),
-                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    )
-                    st.plotly_chart(fig_gf, use_container_width=True)
-                    st.divider()
-
-                gf_disp = gf.copy()
-                for col in ["primera_cosecha", "ultima_cosecha", "primer_remito", "ultimo_remito"]:
-                    if col in gf_disp.columns:
-                        gf_disp[col] = gf_disp[col].dt.strftime("%d/%m/%Y").where(gf_disp[col].notna(), "—")
-                for col in ["cant_remitos", "dias_cosecha_remito", "duracion_total_dias"]:
-                    if col in gf_disp.columns:
-                        gf_disp[col] = gf_disp[col].apply(
-                            lambda v: "—" if pd.isna(v) else f"{int(v):,}"
-                        )
-
-                rename_f = {
-                    "campo":               "Campo",
-                    "primera_cosecha":     "1ra Cosecha (SISA)",
-                    "ultima_cosecha":      "Últ Cosecha (SISA)",
-                    "primer_remito":       "1er Remito",
-                    "ultimo_remito":       "Últ Remito",
-                    "cant_remitos":        "N° Remitos",
-                    "dias_cosecha_remito": "Días 1ra Cos → 1er Rem",
-                    "duracion_total_dias": "Duración Total (días)",
-                }
-                disp_f = gf_disp.rename(columns=rename_f)[[v for k, v in rename_f.items() if k in gf_disp.columns]]
-                st.dataframe(disp_f, use_container_width=True, hide_index=True)
-                download_btn(gf_disp.rename(columns=rename_f), "cruce_fechas.xlsx")
-
-    st.stop()
+if not rem.empty:
+    sup   = sup_lote(rem)
+    vc    = agg_campo_rem(rem, sup)
+    vl    = agg_lote(rem, sup)
+    vd    = agg_desmotadora(rem)
+    vcont = agg_contratista(rem)
+    vsem  = agg_semanal(rem)
+    bruto_total   = rem["cantidad"].sum()
+    consumo_total = rem["cantidadconsumo"].sum()
+    fibra_total   = rem["cantidadproducidakilos"].sum()
+    rd_total      = fibra_total / consumo_total * 100 if consumo_total > 0 else 0
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 0 — RESUMEN GENERAL
+# RESUMEN GENERAL
 # ═══════════════════════════════════════════════════════════════════════════════
 
 st.header("Resumen General")
@@ -961,38 +696,37 @@ st.header("Resumen General")
 if not sisa.empty:
     rc = resumen_cruzado(sisa, rem)
 
-    tot_semb     = rc["sup_sembrada"].sum()
-    tot_plan     = rc["tn_planificadas"].sum()
-    tot_prod     = rc["tn_producidas"].sum()
-    tot_entreg   = rc["entregado_tn"].sum()
-    tot_en_est   = rc["en_establecimiento"].sum()
-    tot_rol_prod = rc["rollos_producidos"].sum()
-    tot_rol_carg = rc["rollos_cargados"].sum()
-    pct_entrega  = tot_entreg / tot_prod * 100 if tot_prod > 0 else 0
-    pct_en_est   = tot_en_est / tot_prod * 100 if tot_prod > 0 else 0
+    tot_semb      = rc["sup_sembrada"].sum()
+    tot_cos       = rc["sup_cosechada"].sum()
+    pct_cos       = tot_cos / tot_semb * 100 if tot_semb > 0 else 0
+    tot_plan      = rc["tn_planificadas"].sum()
+    tot_prod      = rc["tn_producidas"].sum()
+    tot_entreg    = rc["entregado_tn"].sum()
+    tot_en_est    = rc["en_establecimiento"].sum()
+    tot_desmotado = rc["tn_desmotadas"].sum()
+    pct_entrega   = tot_entreg / tot_prod * 100 if tot_prod > 0 else 0
+    pct_en_est    = tot_en_est / tot_prod * 100 if tot_prod > 0 else 0
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(kpi_card("Sup Sembrada", f"{tot_semb:,.0f} ha"), unsafe_allow_html=True)
-    c2.markdown(kpi_card("Tn Planificadas", f"{tot_plan:,.1f} Tn"), unsafe_allow_html=True)
-    c3.markdown(kpi_card("Tn Producidas", f"{tot_prod:,.1f} Tn",
+    c1.markdown(kpi_card("Sup Sembrada",    f"{tot_semb:,.0f} ha"), unsafe_allow_html=True)
+    c2.markdown(kpi_card("Sup Cosechada",   f"{tot_cos:,.0f} ha"), unsafe_allow_html=True)
+    c3.markdown(kpi_card("% Cosechado",     f"{pct_cos:.1f}%"), unsafe_allow_html=True)
+    c4.markdown(kpi_card("Tn Planificadas", f"{tot_plan:,.1f} Tn"), unsafe_allow_html=True)
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.markdown(kpi_card("Tn Producidas", f"{tot_prod:,.1f} Tn",
         delta=f"{tot_prod - tot_plan:+,.1f} Tn vs plan"), unsafe_allow_html=True)
-    c4.markdown(kpi_card("Entregado a Desm.", f"{tot_entreg:,.1f} Tn",
+    c6.markdown(kpi_card("Entregado a Desm.", f"{tot_entreg:,.1f} Tn",
         delta=f"{pct_entrega:.0f}% del total prod.", delta_color="off"), unsafe_allow_html=True)
-
-    c5, c6, c7, _ = st.columns(4)
-    c5.markdown(kpi_card("En Establecimiento", f"{tot_en_est:,.1f} Tn",
+    c7.markdown(kpi_card("En Establecimiento", f"{tot_en_est:,.1f} Tn",
         delta=f"{pct_en_est:.0f}% sin entregar", delta_color="inverse"), unsafe_allow_html=True)
-    c6.markdown(kpi_card("Rollos Producidos", f"{tot_rol_prod:,.0f}"), unsafe_allow_html=True)
-    c7.markdown(kpi_card("Rollos Cargados", f"{tot_rol_carg:,.0f}",
-        delta=f"{tot_rol_carg - tot_rol_prod:+,.0f} vs prod.", delta_color="off"), unsafe_allow_html=True)
+    c8.markdown(kpi_card("Tn Desmotadas", f"{tot_desmotado:,.1f} Tn"), unsafe_allow_html=True)
 
-    # progress bar: % entregado del total producido
     st.progress(
         min(pct_entrega / 100, 1.0),
         text=f"Entregado a desmotadora: {pct_entrega:.1f}% de lo producido",
     )
 
-    # stacked bar: entregado vs en establecimiento por campo, planificado como referencia
     rc_melt = rc[["campo", "entregado_tn", "en_establecimiento"]].melt(
         id_vars="campo",
         value_vars=["entregado_tn", "en_establecimiento"],
@@ -1027,24 +761,25 @@ if not sisa.empty:
     disp_rc = rc.rename(columns={
         "campo":              "Campo",
         "sup_sembrada":       "Sup Semb ha",
+        "sup_cosechada":      "Sup Cos ha",
+        "pct_cosechado":      "% Cosechado",
         "tn_planificadas":    "Tn Plan",
         "tn_producidas":      "Tn Prod",
         "cumpl_plan_pct":     "% vs Plan",
         "entregado_tn":       "Entregado Tn",
         "avance_entrega_pct": "% Entregado",
         "en_establecimiento": "En Estab. Tn",
-        "rollos_producidos":  "Rollos Prod",
-        "rollos_cargados":    "Rollos Carg",
+        "tn_desmotadas":      "Tn Desmotadas",
     })
     disp_rc_tot = totales_row(disp_rc, "Campo")
     n = len(disp_rc)
-
     st.dataframe(
         style_total_row(
             disp_rc_tot.style
                 .format(fmt_num(disp_rc_tot), na_rep="—")
-                .map(sem_en_est, subset=["En Estab. Tn"])
-                .map(sem_avance_entrega, subset=["% Entregado"]),
+                .map(sem_en_est,        subset=["En Estab. Tn"])
+                .map(sem_avance_entrega, subset=["% Entregado"])
+                .map(sem_avance,        subset=["% Cosechado"]),
             n,
         ),
         use_container_width=True,
@@ -1058,350 +793,636 @@ else:
 st.divider()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 1 — PLANIFICACIÓN DE CAMPAÑA (SISA)
+# TABS PRINCIPALES: PRODUCCIÓN · LOGÍSTICA · DESMOTE
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.header("Planificación de Campaña")
+st.markdown("""
+<style>
+.stTabs [data-baseweb="tab-list"] {
+    justify-content: center;
+    gap: 24px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+}
+.stTabs [data-baseweb="tab"] {
+    font-size: 1.15rem;
+    font-weight: 700;
+    padding: 14px 36px;
+    border-radius: 10px 10px 0 0;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #e8f5e9;
+    color: #1a5c2a;
+}
+</style>
+""", unsafe_allow_html=True)
 
-if sisa.empty:
-    st.warning("Sin datos de planificación para los filtros seleccionados.")
-else:
-    vc_sisa = agg_campo_sisa(sisa)
+tab_prod, tab_log, tab_desm = st.tabs(["🌱 Producción", "🚚 Logística", "🏭 Desmote"])
 
-    tot_sup_plan = sisa["superficieplanificada"].sum()
-    tot_sup_semb = sisa["superficiesembrada"].sum()
-    tot_sup_cos  = sisa["superficiecosechada"].sum()
-    tot_tn_plan  = sisa["tnplanificados"].sum()
-    tot_tn_prod  = sisa["tnproducidos"].sum()
-    tot_resto    = sisa["restoacosechar"].sum()
-    avance_gl    = tot_sup_cos / tot_sup_semb * 100 if tot_sup_semb > 0 else 0
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB: PRODUCCIÓN
+# ─────────────────────────────────────────────────────────────────────────────
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(kpi_card("Sup Planificada", f"{tot_sup_plan:,.0f} ha"), unsafe_allow_html=True)
-    c2.markdown(kpi_card("Sup Sembrada",    f"{tot_sup_semb:,.0f} ha"), unsafe_allow_html=True)
-    c3.markdown(kpi_card("Sup Cosechada",   f"{tot_sup_cos:,.0f} ha"), unsafe_allow_html=True)
-    c4.markdown(kpi_card("Avance Global", f"{avance_gl:.1f}%",
-        delta=f"{avance_gl - 100:.1f}% restante", delta_color="inverse"), unsafe_allow_html=True)
+with tab_prod:
+    if sisa.empty:
+        st.warning("Sin datos de planificación para los filtros seleccionados.")
+    else:
+        vc_sisa = agg_campo_sisa(sisa)
 
-    c5, c6, c7, _ = st.columns(4)
-    c5.markdown(kpi_card("Tn Planificadas", f"{tot_tn_plan:,.0f}"), unsafe_allow_html=True)
-    c6.markdown(kpi_card("Tn Producidas", f"{tot_tn_prod:,.0f}",
-        delta=f"{tot_tn_prod - tot_tn_plan:+,.0f} vs plan"), unsafe_allow_html=True)
-    c7.markdown(kpi_card("Resto a Cosechar", f"{tot_resto:,.0f} ha"), unsafe_allow_html=True)
+        tot_sup_plan = sisa["superficieplanificada"].sum()
+        tot_sup_semb = sisa["superficiesembrada"].sum()
+        tot_sup_cos  = sisa["superficiecosechada"].sum()
+        tot_tn_plan  = sisa["tnplanificados"].sum()
+        tot_tn_prod  = sisa["tnproducidos"].sum()
+        tot_resto    = sisa["restoacosechar"].sum()
+        avance_gl    = tot_sup_cos / tot_sup_semb * 100 if tot_sup_semb > 0 else 0
 
-    st.progress(
-        min(avance_gl / 100, 1.0),
-        text=f"Avance de cosecha: {avance_gl:.1f}% de la superficie sembrada",
-    )
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(kpi_card("Sup Planificada", f"{tot_sup_plan:,.0f} ha"), unsafe_allow_html=True)
+        c2.markdown(kpi_card("Sup Sembrada",    f"{tot_sup_semb:,.0f} ha"), unsafe_allow_html=True)
+        c3.markdown(kpi_card("Sup Cosechada",   f"{tot_sup_cos:,.0f} ha"), unsafe_allow_html=True)
+        c4.markdown(kpi_card("Avance Global", f"{avance_gl:.1f}%",
+            delta=f"{avance_gl - 100:.1f}% restante", delta_color="inverse"), unsafe_allow_html=True)
 
-    st.divider()
+        c5, c6, c7, _ = st.columns(4)
+        c5.markdown(kpi_card("Tn Planificadas", f"{tot_tn_plan:,.0f}"), unsafe_allow_html=True)
+        c6.markdown(kpi_card("Tn Producidas", f"{tot_tn_prod:,.0f}",
+            delta=f"{tot_tn_prod - tot_tn_plan:+,.0f} vs plan"), unsafe_allow_html=True)
+        c7.markdown(kpi_card("Resto a Cosechar", f"{tot_resto:,.0f} ha"), unsafe_allow_html=True)
 
-    col_g1, col_g2 = st.columns(2)
-
-    with col_g1:
-        st.subheader("Avance de cosecha por campo (%)")
-        fig_av = px.bar(
-            vc_sisa.sort_values("avance_pct"),
-            x="avance_pct", y="lugar", orientation="h",
-            color="avance_pct",
-            color_continuous_scale=["#fadbd8", "#fef9e7", "#d5f5e3"],
-            range_color=[0, 100],
-            labels={"avance_pct": "%", "lugar": ""},
-            text="avance_pct",
+        st.progress(
+            min(avance_gl / 100, 1.0),
+            text=f"Avance de cosecha: {avance_gl:.1f}% de la superficie sembrada",
         )
-        fig_av.update_traces(
-            texttemplate="%{text:.1f}%", textposition="outside",
-            hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
-        )
-        fig_av.update_layout(
-            height=420, margin=dict(l=0, r=40, t=0, b=0),
-            coloraxis_showscale=False,
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            hoverlabel=dict(bgcolor="white", font_size=13, bordercolor="#2ecc71"),
-        )
-        st.plotly_chart(fig_av, use_container_width=True)
 
-    with col_g2:
-        st.subheader("Rinde planificado vs producido (kg/ha)")
-        df_rinde_melt = vc_sisa.melt(
-            id_vars="lugar",
-            value_vars=["rinde_esp_kgha", "rinde_obt_kgha"],
-            var_name="tipo", value_name="kg_ha",
-        ).replace({"rinde_esp_kgha": "Planificado", "rinde_obt_kgha": "Producido"})
-        fig_rinde = px.bar(
-            df_rinde_melt,
-            x="lugar", y="kg_ha", color="tipo", barmode="group",
-            labels={"kg_ha": "kg/ha", "lugar": "", "tipo": ""},
-            color_discrete_map={"Planificado": "#aed6f1", "Producido": "#2ecc71"},
-        )
-        fig_rinde.update_traces(
-            hovertemplate="<b>%{x}</b><br>%{data.name}: <b>%{y:,.0f} kg/ha</b><extra></extra>",
-        )
-        fig_rinde.update_layout(
-            height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            hoverlabel=dict(bgcolor="white", font_size=13, bordercolor="#aed6f1"),
-        )
-        st.plotly_chart(fig_rinde, use_container_width=True)
+        st.divider()
 
-    st.subheader("Detalle por campo — Planificado vs Real")
-    disp_sisa = vc_sisa.rename(columns={
-        "empresasucursal":  "Sucursal",
-        "lugar":            "Campo",
-        "lotes":            "Lotes",
-        "sup_planificada":  "S.Plan ha",
-        "sup_sembrada":     "S.Semb ha",
-        "sup_cosechada":    "S.Cos ha",
-        "avance_pct":       "Avance %",
-        "tn_planificadas":  "Tn Plan",
-        "tn_producidas":    "Tn Prod",
-        "tn_resto":         "Resto ha",
-        "desvio_tn":        "Desvío Tn",
-        "desvio_pct":       "Desvío %",
-        "rinde_esp_kgha":   "R.Esp kg/ha",
-        "rinde_obt_kgha":   "R.Obt kg/ha",
-    })[["Sucursal", "Campo", "Lotes", "S.Plan ha", "S.Semb ha", "S.Cos ha",
-        "Avance %", "Tn Plan", "Tn Prod", "Desvío Tn", "Desvío %",
-        "R.Esp kg/ha", "R.Obt kg/ha"]]
+        col_g1, col_g2 = st.columns(2)
 
-    disp_sisa_tot = totales_row(disp_sisa, "Campo")
-    n_sisa = len(disp_sisa)
-    st.dataframe(
-        style_total_row(
-            disp_sisa_tot.style
-                .format(fmt_num(disp_sisa_tot), na_rep="—")
-                .map(sem_avance, subset=["Avance %"])
-                .map(sem_desvio, subset=["Desvío %"]),
-            n_sisa,
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
-    download_btn(disp_sisa, "planificacion_campo.xlsx")
+        with col_g1:
+            st.subheader("Avance de cosecha por campo (%)")
+            fig_av = px.bar(
+                vc_sisa.sort_values("avance_pct"),
+                x="avance_pct", y="lugar", orientation="h",
+                color="avance_pct",
+                color_continuous_scale=["#e74c3c", "#f39c12", "#27ae60"],
+                range_color=[0, 100],
+                labels={"avance_pct": "%", "lugar": ""},
+                text="avance_pct",
+            )
+            fig_av.update_traces(
+                texttemplate="%{text:.1f}%", textposition="outside",
+                hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
+            )
+            fig_av.update_layout(
+                height=420, margin=dict(l=0, r=40, t=0, b=0),
+                coloraxis_showscale=False,
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                hoverlabel=dict(bgcolor="white", font_size=13, bordercolor="#2ecc71"),
+            )
+            st.plotly_chart(fig_av, use_container_width=True)
 
-    with st.expander("Ver detalle por lote (SISA)"):
-        cols_lote = [
-            "empresasucursal", "lugar", "lote", "actividad",
-            "superficieplanificada", "superficiesembrada", "superficiecosechada",
-            "porcentajeavance", "tnplanificados", "tnproducidos",
-            "restoacosechar", "rindeesperado", "rindeobtenido",
-        ]
-        disp_lote_sisa = (
-            sisa[[c for c in cols_lote if c in sisa.columns]]
-            .sort_values(["empresasucursal", "lugar", "lote"])
-            .rename(columns={
-                "empresasucursal":      "Sucursal",
-                "lugar":                "Campo",
-                "lote":                 "Lote",
-                "actividad":            "Actividad",
-                "superficieplanificada":"S.Plan ha",
-                "superficiesembrada":   "S.Semb ha",
-                "superficiecosechada":  "S.Cos ha",
-                "porcentajeavance":     "Avance %",
-                "tnplanificados":       "Tn Plan",
-                "tnproducidos":         "Tn Prod",
-                "restoacosechar":       "Resto ha",
-                "rindeesperado":        "R.Esp kg/ha",
-                "rindeobtenido":        "R.Obt kg/ha",
-            })
-        )
+        with col_g2:
+            st.subheader("Rinde planificado vs producido (kg/ha)")
+            df_rinde_melt = vc_sisa.melt(
+                id_vars="lugar",
+                value_vars=["rinde_esp_kgha", "rinde_obt_kgha"],
+                var_name="tipo", value_name="kg_ha",
+            ).replace({"rinde_esp_kgha": "Planificado", "rinde_obt_kgha": "Producido"})
+            fig_rinde = px.bar(
+                df_rinde_melt,
+                x="lugar", y="kg_ha", color="tipo", barmode="group",
+                labels={"kg_ha": "kg/ha", "lugar": "", "tipo": ""},
+                color_discrete_map={"Planificado": "#aed6f1", "Producido": "#2ecc71"},
+            )
+            fig_rinde.update_traces(
+                hovertemplate="<b>%{x}</b><br>%{data.name}: <b>%{y:,.0f} kg/ha</b><extra></extra>",
+            )
+            fig_rinde.update_layout(
+                height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                hoverlabel=dict(bgcolor="white", font_size=13, bordercolor="#aed6f1"),
+            )
+            st.plotly_chart(fig_rinde, use_container_width=True)
+
+        st.subheader("Detalle por campo — Planificado vs Real")
+        disp_sisa = vc_sisa.rename(columns={
+            "empresasucursal":  "Sucursal",
+            "lugar":            "Campo",
+            "lotes":            "Lotes",
+            "sup_planificada":  "S.Plan ha",
+            "sup_sembrada":     "S.Semb ha",
+            "sup_cosechada":    "S.Cos ha",
+            "avance_pct":       "Avance %",
+            "tn_planificadas":  "Tn Plan",
+            "tn_producidas":    "Tn Prod",
+            "tn_resto":         "Resto ha",
+            "desvio_tn":        "Desvío Tn",
+            "desvio_pct":       "Desvío %",
+            "rinde_esp_kgha":   "R.Esp kg/ha",
+            "rinde_obt_kgha":   "R.Obt kg/ha",
+        })[["Sucursal", "Campo", "Lotes", "S.Plan ha", "S.Semb ha", "S.Cos ha",
+            "Avance %", "Tn Plan", "Tn Prod", "Desvío Tn", "Desvío %",
+            "R.Esp kg/ha", "R.Obt kg/ha"]]
+
+        disp_sisa_tot = totales_row(disp_sisa, "Campo")
+        n_sisa = len(disp_sisa)
         st.dataframe(
-            disp_lote_sisa.style
-                .format(fmt_num(disp_lote_sisa), na_rep="—")
-                .map(sem_avance, subset=["Avance %"]),
+            style_total_row(
+                disp_sisa_tot.style
+                    .format(fmt_num(disp_sisa_tot), na_rep="—")
+                    .map(sem_avance, subset=["Avance %"])
+                    .map(sem_desvio, subset=["Desvío %"]),
+                n_sisa,
+            ),
             use_container_width=True,
             hide_index=True,
         )
-        download_btn(disp_lote_sisa, "detalle_lotes_sisa.xlsx")
+        download_btn(disp_sisa, "planificacion_campo.xlsx")
 
-st.divider()
+        with st.expander("Ver detalle por lote (SISA)"):
+            cols_lote = [
+                "empresasucursal", "lugar", "lote", "actividad",
+                "superficieplanificada", "superficiesembrada", "superficiecosechada",
+                "porcentajeavance", "tnplanificados", "tnproducidos",
+                "restoacosechar", "rindeesperado", "rindeobtenido",
+            ]
+            disp_lote_sisa = (
+                sisa[[c for c in cols_lote if c in sisa.columns]]
+                .sort_values(["empresasucursal", "lugar", "lote"])
+                .rename(columns={
+                    "empresasucursal":      "Sucursal",
+                    "lugar":                "Campo",
+                    "lote":                 "Lote",
+                    "actividad":            "Actividad",
+                    "superficieplanificada":"S.Plan ha",
+                    "superficiesembrada":   "S.Semb ha",
+                    "superficiecosechada":  "S.Cos ha",
+                    "porcentajeavance":     "Avance %",
+                    "tnplanificados":       "Tn Plan",
+                    "tnproducidos":         "Tn Prod",
+                    "restoacosechar":       "Resto ha",
+                    "rindeesperado":        "R.Esp kg/ha",
+                    "rindeobtenido":        "R.Obt kg/ha",
+                })
+            )
+            st.dataframe(
+                disp_lote_sisa.style
+                    .format(fmt_num(disp_lote_sisa), na_rep="—")
+                    .map(sem_avance, subset=["Avance %"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+            download_btn(disp_lote_sisa, "detalle_lotes_sisa.xlsx")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SECCIÓN 2 — REMITOS DE COSECHA
-# ═══════════════════════════════════════════════════════════════════════════════
+        st.divider()
 
-st.header("Remitos de Cosecha")
+        # ── Cruce SISA + Remitos ──────────────────────────────────────────────
+        sub_campo, sub_lote = st.tabs(["Por Campo", "Por Lote"])
 
-if rem.empty:
-    st.info("Sin remitos para los filtros seleccionados.")
-    st.stop()
+        with sub_campo:
+            if rem.empty:
+                st.info("Sin remitos para cruzar con SISA.")
+            else:
+                gc = cruce_campo(sisa, rem)
 
-sup   = sup_lote(rem)
-vc    = agg_campo_rem(rem, sup)
-vl    = agg_lote(rem, sup)
-vd    = agg_desmotadora(rem)
-vcont = agg_contratista(rem)
-vsem  = agg_semanal(rem)
+                tot_prod_c   = gc["tn_producidas"].sum()
+                tot_entr_c   = gc["bruto_tn"].sum()
+                tot_en_est_c = gc["en_estab_tn"].sum()
+                pct_entr_c   = tot_entr_c / tot_prod_c * 100 if tot_prod_c > 0 else 0
+                tot_rol_prod = gc["rollos_producidos"].sum()
+                tot_rol_carg = gc["rollos_cargados"].sum()
 
-bruto_total = rem["pesoneto"].sum()
-fibra_total = rem["cantidadproducidakilos"].sum()
-rd_total    = fibra_total / bruto_total * 100 if bruto_total > 0 else 0
+                c1, c2, c3, c4 = st.columns(4)
+                c1.markdown(kpi_card("Tn Producidas (SISA)", f"{tot_prod_c:,.1f}"), unsafe_allow_html=True)
+                c2.markdown(kpi_card("Entregado a Desm.", f"{tot_entr_c:,.1f} Tn",
+                    delta=f"{pct_entr_c:.0f}% entregado", delta_color="off"), unsafe_allow_html=True)
+                c3.markdown(kpi_card("En Establecimiento", f"{tot_en_est_c:,.1f} Tn"), unsafe_allow_html=True)
+                c4.markdown(kpi_card("Δ Rollos (Carg − Prod)", f"{tot_rol_carg - tot_rol_prod:+,.0f}",
+                    delta_color="off"), unsafe_allow_html=True)
 
-c1, c2, c3 = st.columns(3)
-c1.markdown(kpi_card("Algodón Bruto",   f"{bruto_total / 1000:,.1f} Tn"), unsafe_allow_html=True)
-c2.markdown(kpi_card("Fibra Producida", f"{fibra_total / 1000:,.1f} Tn"), unsafe_allow_html=True)
-c3.markdown(kpi_card("Rinde Desmote", f"{rd_total:.1f}%",
-    delta=f"{rd_total - 24:.1f}pp vs ref. 24%"), unsafe_allow_html=True)
+                fig_gc = px.bar(
+                    gc.melt(
+                        id_vars="campo",
+                        value_vars=["tn_producidas", "bruto_tn", "en_estab_tn"],
+                        var_name="origen", value_name="tn",
+                    ).replace({
+                        "tn_producidas": "Producido (SISA)",
+                        "bruto_tn":      "Entregado (Remitos)",
+                        "en_estab_tn":   "En Establecimiento",
+                    }),
+                    x="campo", y="tn", color="origen", barmode="stack",
+                    labels={"tn": "Tn", "campo": "", "origen": ""},
+                    color_discrete_map={
+                        "Producido (SISA)":    "#aed6f1",
+                        "Entregado (Remitos)": "#2ecc71",
+                        "En Establecimiento":  "#f39c12",
+                    },
+                    height=380,
+                )
+                fig_gc.update_layout(
+                    margin=dict(l=0, r=0, t=10, b=40), legend_title="",
+                    xaxis_tickangle=-30,
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_gc, use_container_width=True)
+                st.divider()
 
-c4, c5, c6 = st.columns(3)
-c4.markdown(kpi_card("Fardos",  f"{int(rem['cantidadproducidafardos'].sum()):,}"), unsafe_allow_html=True)
-c5.markdown(kpi_card("Campos",  str(rem['establecimiento'].nunique())), unsafe_allow_html=True)
-c6.markdown(kpi_card("Remitos", str(len(rem))), unsafe_allow_html=True)
+                cols_disp = {
+                    "campo":            "Campo",
+                    "tn_planificadas":  "Tn Plan",
+                    "tn_producidas":    "Tn Prod (SISA)",
+                    "cumpl_plan_pct":   "% vs Plan",
+                    "avance_cos_pct":   "Avance Cos %",
+                    "bruto_tn":         "Entregado Tn",
+                    "pct_entregado":    "% Entregado",
+                    "en_estab_tn":      "En Estab Tn",
+                    "rollos_producidos":"Rollos Prod",
+                    "rollos_cargados":  "Rollos Carg",
+                    "delta_rollos":     "Δ Rollos",
+                    "pct_rollos_carg":  "% Rollos Carg",
+                    "cant_remitos":     "N° Remitos",
+                }
+                disp_gc = gc.rename(columns=cols_disp)[list(cols_disp.values())]
+                disp_gc_tot = totales_row(disp_gc, "Campo")
+                n_gc = len(disp_gc)
+                st.dataframe(
+                    style_total_row(
+                        disp_gc_tot.style
+                            .format(fmt_num(disp_gc_tot), na_rep="—")
+                            .map(sem_avance, subset=["Avance Cos %"])
+                            .map(sem_avance_entrega, subset=["% Entregado"]),
+                        n_gc,
+                    ),
+                    use_container_width=True, hide_index=True,
+                )
+                download_btn(disp_gc, "cruce_campo.xlsx")
 
-st.divider()
+        with sub_lote:
+            if rem.empty:
+                st.info("Sin remitos para cruzar con SISA.")
+            else:
+                gl = cruce_lote(sisa, rem)
 
-col_g1, col_g2 = st.columns(2)
+                gl_plot = gl.dropna(subset=["tn_producidas"]).copy()
+                gl_plot = gl_plot[gl_plot["tn_producidas"] > 0].sort_values(
+                    ["campo", "pct_entregado"], ascending=[True, False]
+                )
+                if not gl_plot.empty:
+                    fig_gl = px.bar(
+                        gl_plot,
+                        x="pct_entregado",
+                        y="lote",
+                        color="campo",
+                        orientation="h",
+                        custom_data=["tn_producidas", "bruto_tn", "avance_pct", "campo"],
+                        labels={
+                            "pct_entregado": "% Entregado vs Producido",
+                            "lote":          "Lote",
+                            "campo":         "Campo",
+                        },
+                        height=max(400, len(gl_plot) * 26),
+                    )
+                    fig_gl.update_traces(
+                        hovertemplate=(
+                            "<b>%{y}</b> — %{customdata[3]}<br>"
+                            "Entregado: %{x:.1f}%<br>"
+                            "Tn producidas: %{customdata[0]:,.0f}<br>"
+                            "Tn entregadas: %{customdata[1]:,.0f}<br>"
+                            "Avance cosecha: %{customdata[2]:.1f}%"
+                            "<extra></extra>"
+                        )
+                    )
+                    fig_gl.add_vline(
+                        x=100,
+                        line_dash="dot", line_color="#aaa", line_width=1,
+                        annotation_text="100%", annotation_position="top right",
+                    )
+                    fig_gl.update_layout(
+                        margin=dict(l=0, r=20, t=10, b=0), legend_title="",
+                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                        yaxis=dict(tickfont=dict(size=11)),
+                    )
+                    st.plotly_chart(fig_gl, use_container_width=True)
+                    st.divider()
 
-with col_g1:
-    st.subheader("Algodón bruto por campo (Tn)")
-    fig = px.bar(
-        vc.sort_values("bruto_tn"),
-        x="bruto_tn", y="establecimiento", color="empresa",
-        orientation="h",
-        labels={"bruto_tn": "Tn", "establecimiento": ""},
-        color_discrete_sequence=px.colors.qualitative.Set2,
-    )
-    fig.update_traces(
-        hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:,.1f} Tn</b><extra></extra>",
-    )
-    fig.update_layout(
-        height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        hoverlabel=dict(bgcolor="white", font_size=13),
-    )
-    st.plotly_chart(fig, use_container_width=True)
+                cols_l = {
+                    "campo":            "Campo",
+                    "lote":             "Lote",
+                    "tn_producidas":    "Tn Prod (SISA)",
+                    "sup_cosechada":    "Sup Cos ha",
+                    "avance_pct":       "Avance %",
+                    "rollos_producidos":"Rollos Prod",
+                    "bruto_tn":         "Entregado Tn",
+                    "remitos":          "N° Remitos",
+                    "pct_entregado":    "% Entregado",
+                }
+                disp_gl = gl.rename(columns=cols_l)[[v for v in cols_l.values() if v in gl.rename(columns=cols_l).columns]]
+                st.dataframe(
+                    disp_gl.style
+                        .format(fmt_num(disp_gl), na_rep="—")
+                        .map(sem_avance, subset=[c for c in ["Avance %"] if c in disp_gl.columns])
+                        .map(sem_avance_entrega, subset=[c for c in ["% Entregado"] if c in disp_gl.columns]),
+                    use_container_width=True, hide_index=True,
+                )
+                download_btn(disp_gl, "cruce_lote.xlsx")
 
-with col_g2:
-    st.subheader("Rinde al desmote por campo (%)")
-    fig2 = px.bar(
-        vc.sort_values("rinde_desmote"),
-        x="rinde_desmote", y="establecimiento", color="empresa",
-        orientation="h",
-        labels={"rinde_desmote": "%", "establecimiento": ""},
-        color_discrete_sequence=px.colors.qualitative.Set2,
-    )
-    fig2.add_vline(x=24, line_dash="dot", line_color="orange", annotation_text="24%")
-    fig2.add_vline(x=28, line_dash="dot", line_color="green",  annotation_text="28%")
-    fig2.update_traces(
-        hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:.1f}%</b><extra></extra>",
-    )
-    fig2.update_layout(
-        height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        hoverlabel=dict(bgcolor="white", font_size=13),
-    )
-    st.plotly_chart(fig2, use_container_width=True)
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB: LOGÍSTICA
+# ─────────────────────────────────────────────────────────────────────────────
 
-if not vsem.empty and vsem["semana"].notna().any():
-    st.subheader("Remitos por semana (Tn bruto)")
-    vsem["bruto_tn"] = vsem["bruto_kg"] / 1000
-    fig3 = px.bar(
-        vsem, x="semana", y="bruto_tn",
-        labels={"semana": "Semana", "bruto_tn": "Tn Algodón Bruto"},
-        color_discrete_sequence=["#2ecc71"],
-        text="bruto_tn",
-    )
-    fig3.update_traces(
-        texttemplate="%{text:,.1f}", textposition="outside",
-        hovertemplate="Semana %{x|%d/%m}<br><b>%{y:,.1f} Tn</b><extra></extra>",
-    )
-    fig3.update_layout(
-        height=300, margin=dict(l=0, r=0, t=10, b=0),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        hoverlabel=dict(bgcolor="white", font_size=13),
-    )
-    st.plotly_chart(fig3, use_container_width=True)
+with tab_log:
+    if rem.empty:
+        st.info("Sin remitos para los filtros seleccionados.")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(kpi_card("Algodón Bruto",   f"{bruto_total / 1000:,.1f} Tn"), unsafe_allow_html=True)
+        c2.markdown(kpi_card("Remitos",         str(len(rem))), unsafe_allow_html=True)
+        c3.markdown(kpi_card("Campos",          str(rem['establecimiento'].nunique())), unsafe_allow_html=True)
+        c4.markdown(kpi_card("Fardos",          f"{int(rem['cantidadproducidafardos'].sum()):,}"), unsafe_allow_html=True)
 
-st.divider()
+        st.divider()
 
-st.subheader("Producción por campo")
-disp_campo = vc.rename(columns={
-    "empresa":       "Empresa",
-    "establecimiento":"Campo",
-    "sup_ha":        "Sup (ha)",
-    "bruto_tn":      "Bruto (Tn)",
-    "rinde_kgha":    "Rinde (kg/ha)",
-    "fibra_tn":      "Fibra (Tn)",
-    "rinde_desmote": "Rinde Desm. (%)",
-    "fardos":        "Fardos",
-    "ppf_kg":        "PP Fardo (kg)",
-    "remitos":       "Remitos",
-})[["Empresa", "Campo", "Sup (ha)", "Bruto (Tn)", "Rinde (kg/ha)",
-    "Fibra (Tn)", "Rinde Desm. (%)", "Fardos", "PP Fardo (kg)", "Remitos"]]
+        col_g1, col_g2 = st.columns(2)
 
-disp_campo_tot = totales_row(disp_campo, "Empresa", label="TOTAL")
-n_campo = len(disp_campo)
-st.dataframe(
-    style_total_row(
-        disp_campo_tot.style
-            .format(fmt_num(disp_campo_tot), na_rep="—")
-            .map(sem_rinde, subset=["Rinde Desm. (%)"]),
-        n_campo,
-    ),
-    use_container_width=True,
-    hide_index=True,
-)
-download_btn(disp_campo, "produccion_campo.xlsx")
+        with col_g1:
+            st.subheader("Algodón bruto por campo (Tn)")
+            fig_log = px.bar(
+                vc.sort_values("bruto_tn"),
+                x="bruto_tn", y="establecimiento", color="empresa",
+                orientation="h",
+                labels={"bruto_tn": "Tn", "establecimiento": ""},
+                color_discrete_sequence=px.colors.qualitative.Set2,
+            )
+            fig_log.update_traces(
+                hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:,.1f} Tn</b><extra></extra>",
+            )
+            fig_log.update_layout(
+                height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                hoverlabel=dict(bgcolor="white", font_size=13),
+            )
+            st.plotly_chart(fig_log, use_container_width=True)
 
-st.subheader("Producción por lote")
-disp_lote = vl.rename(columns={
-    "empresa":         "Empresa",
-    "establecimiento": "Campo",
-    "loteproduccion":  "Lote",
-    "sup_ha":          "Sup (ha)",
-    "bruto_tn":        "Bruto (Tn)",
-    "rinde_kgha":      "Rinde (kg/ha)",
-    "fibra_tn":        "Fibra (Tn)",
-    "rinde_desmote":   "Rinde Desm. (%)",
-    "fardos":          "Fardos",
-})[["Empresa", "Campo", "Lote", "Sup (ha)", "Bruto (Tn)", "Rinde (kg/ha)",
-    "Fibra (Tn)", "Rinde Desm. (%)", "Fardos"]]
-st.dataframe(
-    disp_lote.style
-        .format(fmt_num(disp_lote), na_rep="—")
-        .map(sem_rinde, subset=["Rinde Desm. (%)"]),
-    use_container_width=True,
-    hide_index=True,
-)
-download_btn(disp_lote, "produccion_lote.xlsx")
+        with col_g2:
+            if not vsem.empty and vsem["semana"].notna().any():
+                st.subheader("Tn entregada por semana")
+                vsem["bruto_tn"] = vsem["bruto_kg"] / 1000
+                fig_sem = px.bar(
+                    vsem, x="semana", y="bruto_tn",
+                    labels={"semana": "Semana", "bruto_tn": "Tn Entregada"},
+                    color_discrete_sequence=["#2ecc71"],
+                    text="bruto_tn",
+                )
+                fig_sem.update_traces(
+                    texttemplate="%{text:,.1f}", textposition="outside",
+                    hovertemplate="Semana %{x|%d/%m}<br><b>%{y:,.1f} Tn</b><extra></extra>",
+                )
+                fig_sem.update_layout(
+                    height=420, margin=dict(l=0, r=0, t=10, b=0),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    hoverlabel=dict(bgcolor="white", font_size=13),
+                )
+                st.plotly_chart(fig_sem, use_container_width=True)
 
-st.subheader("Logística por desmotadora")
-disp_desm = vd.rename(columns={
-    "desmotadora":   "Desmotadora",
-    "empresa":       "Empresa",
-    "establecimiento":"Campo",
-    "entrega_kg":    "Entregado (kg)",
-    "fibra_kg":      "Fibra (kg)",
-    "rinde_desmote": "Rinde (%)",
-    "fardos":        "Fardos",
-    "ppf_kg":        "PP Fardo (kg)",
-})[["Desmotadora", "Empresa", "Campo", "Entregado (kg)", "Fibra (kg)",
-    "Rinde (%)", "Fardos", "PP Fardo (kg)"]]
-st.dataframe(
-    disp_desm.style
-        .format(fmt_num(disp_desm), na_rep="—")
-        .map(sem_rinde, subset=["Rinde (%)"]),
-    use_container_width=True,
-    hide_index=True,
-)
-download_btn(disp_desm, "logistica_desmotadora.xlsx")
+        st.divider()
 
-st.subheader("Rinde por contratista")
-disp_cont = vcont.rename(columns={
-    "contratistacosecha": "Contratista",
-    "bruto_kg":           "Bruto (kg)",
-    "fibra_kg":           "Fibra (kg)",
-    "rinde_desmote":      "Rinde (%)",
-    "fardos":             "Fardos",
-})[["Contratista", "Bruto (kg)", "Fibra (kg)", "Rinde (%)", "Fardos"]]
-st.dataframe(
-    disp_cont.style
-        .format(fmt_num(disp_cont), na_rep="—")
-        .map(sem_rinde, subset=["Rinde (%)"]),
-    use_container_width=True,
-    hide_index=True,
-)
-download_btn(disp_cont, "contratistas.xlsx")
+        sub_rollos, sub_fechas = st.tabs(["Rollos", "Fechas"])
+
+        with sub_rollos:
+            if sisa.empty:
+                st.info("Sin datos SISA para los filtros seleccionados.")
+            else:
+                gc_r = cruce_campo(sisa, rem)[
+                    ["campo", "rollos_producidos", "rollos_cargados", "delta_rollos", "pct_rollos_carg"]
+                ]
+                gc_r = gc_r[(gc_r["rollos_producidos"] > 0) | (gc_r["rollos_cargados"] > 0)]
+                if gc_r.empty:
+                    st.info("No hay datos de rollos para los campos seleccionados.")
+                else:
+                    fig_gr = px.bar(
+                        gc_r.melt(
+                            id_vars="campo",
+                            value_vars=["rollos_producidos", "rollos_cargados"],
+                            var_name="tipo", value_name="rollos",
+                        ).replace({
+                            "rollos_producidos": "Producidos (SISA)",
+                            "rollos_cargados":   "Cargados (Remitos)",
+                        }),
+                        x="campo", y="rollos", color="tipo", barmode="group",
+                        labels={"rollos": "Rollos", "campo": "", "tipo": ""},
+                        color_discrete_map={
+                            "Producidos (SISA)":  "#aed6f1",
+                            "Cargados (Remitos)": "#2ecc71",
+                        },
+                        text_auto=True,
+                        height=360,
+                    )
+                    fig_gr.update_layout(
+                        margin=dict(l=0, r=0, t=10, b=40), legend_title="",
+                        xaxis_tickangle=-30,
+                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(fig_gr, use_container_width=True)
+                    st.divider()
+
+                    disp_r = gc_r.rename(columns={
+                        "campo":             "Campo",
+                        "rollos_producidos": "Producidos (SISA)",
+                        "rollos_cargados":   "Cargados (Remitos)",
+                        "delta_rollos":      "Diferencia",
+                        "pct_rollos_carg":   "% Cargado",
+                    })
+                    disp_r_tot = totales_row(disp_r, "Campo")
+                    n_r = len(disp_r)
+                    st.dataframe(
+                        style_total_row(
+                            disp_r_tot.style.format(fmt_num(disp_r_tot)),
+                            n_r,
+                        ),
+                        use_container_width=True, hide_index=True,
+                    )
+                    download_btn(disp_r, "cruce_rollos.xlsx")
+
+        with sub_fechas:
+            if sisa.empty or rem.empty:
+                st.info("Se necesitan datos de ambas fuentes para el cruce de fechas.")
+            else:
+                gf = cruce_fechas(sisa, rem)
+                if gf.empty:
+                    st.info("No hay columnas de fecha de cosecha en SISA.")
+                else:
+                    gantt_df = gf.dropna(subset=["primera_cosecha", "ultimo_remito"]).rename(columns={
+                        "campo":          "Campo",
+                        "primera_cosecha":"Inicio",
+                        "ultimo_remito":  "Fin",
+                    })
+                    if not gantt_df.empty:
+                        fig_gf = px.timeline(
+                            gantt_df,
+                            x_start="Inicio", x_end="Fin", y="Campo",
+                            color="Campo",
+                            color_discrete_sequence=px.colors.qualitative.Set2,
+                            height=max(300, len(gantt_df) * 40 + 80),
+                        )
+                        fig_gf.update_layout(
+                            showlegend=False,
+                            margin=dict(l=0, r=0, t=10, b=0),
+                            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                        )
+                        st.plotly_chart(fig_gf, use_container_width=True)
+                        st.divider()
+
+                    gf_disp = gf.copy()
+                    for col in ["primera_cosecha", "ultima_cosecha", "primer_remito", "ultimo_remito"]:
+                        if col in gf_disp.columns:
+                            gf_disp[col] = gf_disp[col].dt.strftime("%d/%m/%Y").where(gf_disp[col].notna(), "—")
+                    for col in ["cant_remitos", "dias_cosecha_remito", "duracion_total_dias"]:
+                        if col in gf_disp.columns:
+                            gf_disp[col] = gf_disp[col].apply(
+                                lambda v: "—" if pd.isna(v) else f"{int(v):,}"
+                            )
+                    rename_f = {
+                        "campo":               "Campo",
+                        "primera_cosecha":     "1ra Cosecha (SISA)",
+                        "ultima_cosecha":      "Últ Cosecha (SISA)",
+                        "primer_remito":       "1er Remito",
+                        "ultimo_remito":       "Últ Remito",
+                        "cant_remitos":        "N° Remitos",
+                        "dias_cosecha_remito": "Días 1ra Cos → 1er Rem",
+                        "duracion_total_dias": "Duración Total (días)",
+                    }
+                    disp_f = gf_disp.rename(columns=rename_f)[[v for k, v in rename_f.items() if k in gf_disp.columns]]
+                    st.dataframe(disp_f, use_container_width=True, hide_index=True)
+                    download_btn(gf_disp.rename(columns=rename_f), "cruce_fechas.xlsx")
+
+        st.divider()
+
+        st.subheader("Logística por desmotadora")
+        disp_desm = vd.rename(columns={
+            "desmotadora":    "Desmotadora",
+            "empresa":        "Empresa",
+            "establecimiento":"Campo",
+            "entrega_kg":     "Entregado (kg)",
+            "fibra_kg":       "Fibra (kg)",
+            "rinde_desmote":  "Rinde (%)",
+            "fardos":         "Fardos",
+            "ppf_kg":         "PP Fardo (kg)",
+        })[["Desmotadora", "Empresa", "Campo", "Entregado (kg)", "Fibra (kg)",
+            "Rinde (%)", "Fardos", "PP Fardo (kg)"]]
+        st.dataframe(
+            disp_desm.style
+                .format(fmt_num(disp_desm), na_rep="—")
+                .map(sem_rinde, subset=["Rinde (%)"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        download_btn(disp_desm, "logistica_desmotadora.xlsx")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB: DESMOTE
+# ─────────────────────────────────────────────────────────────────────────────
+
+with tab_desm:
+    if rem.empty:
+        st.info("Sin remitos para los filtros seleccionados.")
+    else:
+        c1, c2 = st.columns(2)
+        c1.markdown(kpi_card("Fibra Producida", f"{fibra_total / 1000:,.1f} Tn"), unsafe_allow_html=True)
+        c2.markdown(kpi_card("Rinde Desmote", f"{rd_total:.1f}%",
+            delta=f"{rd_total - 24:.1f}pp vs ref. 24%"), unsafe_allow_html=True)
+
+        st.divider()
+
+        st.subheader("Rinde al desmote por campo (%)")
+        fig_desm = px.bar(
+            vc.sort_values("rinde_desmote"),
+            x="rinde_desmote", y="establecimiento", color="empresa",
+            orientation="h",
+            labels={"rinde_desmote": "%", "establecimiento": ""},
+            color_discrete_sequence=px.colors.qualitative.Set2,
+        )
+        fig_desm.add_vline(x=24, line_dash="dot", line_color="orange", annotation_text="24%")
+        fig_desm.add_vline(x=28, line_dash="dot", line_color="green",  annotation_text="28%")
+        fig_desm.update_traces(
+            hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:.1f}%</b><extra></extra>",
+        )
+        fig_desm.update_layout(
+            height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            hoverlabel=dict(bgcolor="white", font_size=13),
+        )
+        st.plotly_chart(fig_desm, use_container_width=True)
+
+        st.divider()
+
+        st.subheader("Producción por campo")
+        disp_campo = vc.rename(columns={
+            "empresa":        "Empresa",
+            "establecimiento":"Campo",
+            "sup_ha":         "Sup (ha)",
+            "bruto_tn":       "Bruto (Tn)",
+            "rinde_kgha":     "Rinde (kg/ha)",
+            "fibra_tn":       "Fibra (Tn)",
+            "rinde_desmote":  "Rinde Desm. (%)",
+            "fardos":         "Fardos",
+            "ppf_kg":         "PP Fardo (kg)",
+            "remitos":        "Remitos",
+        })[["Empresa", "Campo", "Sup (ha)", "Bruto (Tn)", "Rinde (kg/ha)",
+            "Fibra (Tn)", "Rinde Desm. (%)", "Fardos", "PP Fardo (kg)", "Remitos"]]
+
+        disp_campo_tot = totales_row(disp_campo, "Empresa", label="TOTAL")
+        n_campo = len(disp_campo)
+        st.dataframe(
+            style_total_row(
+                disp_campo_tot.style
+                    .format(fmt_num(disp_campo_tot), na_rep="—")
+                    .map(sem_rinde, subset=["Rinde Desm. (%)"]),
+                n_campo,
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+        download_btn(disp_campo, "produccion_campo.xlsx")
+
+        st.subheader("Producción por lote")
+        disp_lote = vl.rename(columns={
+            "empresa":         "Empresa",
+            "establecimiento": "Campo",
+            "loteproduccion":  "Lote",
+            "sup_ha":          "Sup (ha)",
+            "bruto_tn":        "Bruto (Tn)",
+            "rinde_kgha":      "Rinde (kg/ha)",
+            "fibra_tn":        "Fibra (Tn)",
+            "rinde_desmote":   "Rinde Desm. (%)",
+            "fardos":          "Fardos",
+        })[["Empresa", "Campo", "Lote", "Sup (ha)", "Bruto (Tn)", "Rinde (kg/ha)",
+            "Fibra (Tn)", "Rinde Desm. (%)", "Fardos"]]
+        st.dataframe(
+            disp_lote.style
+                .format(fmt_num(disp_lote), na_rep="—")
+                .map(sem_rinde, subset=["Rinde Desm. (%)"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        download_btn(disp_lote, "produccion_lote.xlsx")
+
+        st.subheader("Rinde por contratista")
+        disp_cont = vcont.rename(columns={
+            "contratistacosecha": "Contratista",
+            "bruto_kg":           "Bruto (kg)",
+            "fibra_kg":           "Fibra (kg)",
+            "rinde_desmote":      "Rinde (%)",
+            "fardos":             "Fardos",
+        })[["Contratista", "Bruto (kg)", "Fibra (kg)", "Rinde (%)", "Fardos"]]
+        st.dataframe(
+            disp_cont.style
+                .format(fmt_num(disp_cont), na_rep="—")
+                .map(sem_rinde, subset=["Rinde (%)"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+        download_btn(disp_cont, "contratistas.xlsx")
 
 # ── footer ────────────────────────────────────────────────────────────────────
 st.divider()
