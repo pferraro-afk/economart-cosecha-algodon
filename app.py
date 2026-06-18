@@ -1004,17 +1004,15 @@ with tab_prod:
                 fig_gc = px.bar(
                     gc.melt(
                         id_vars="campo",
-                        value_vars=["tn_producidas", "bruto_tn", "en_estab_tn"],
+                        value_vars=["bruto_tn", "en_estab_tn"],
                         var_name="origen", value_name="tn",
                     ).replace({
-                        "tn_producidas": "Producido (SISA)",
-                        "bruto_tn":      "Entregado (Remitos)",
-                        "en_estab_tn":   "En Establecimiento",
+                        "bruto_tn":    "Entregado (Remitos)",
+                        "en_estab_tn": "En Establecimiento",
                     }),
                     x="campo", y="tn", color="origen", barmode="stack",
                     labels={"tn": "Tn", "campo": "", "origen": ""},
                     color_discrete_map={
-                        "Producido (SISA)":    "#aed6f1",
                         "Entregado (Remitos)": "#2ecc71",
                         "En Establecimiento":  "#f39c12",
                     },
