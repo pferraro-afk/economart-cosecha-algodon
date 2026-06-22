@@ -533,7 +533,6 @@ def load_data():
 
 def sidebar_filters(raw_rem, raw_sisa):
     with st.sidebar:
-        st.header("Filtros")
         st.markdown("---")
 
         empresas_sisa = set(raw_sisa["empresasucursal"].dropna().unique()) if raw_sisa is not None else set()
