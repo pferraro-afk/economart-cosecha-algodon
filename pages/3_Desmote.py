@@ -8,12 +8,6 @@ from utils import (
     kpi_card, sem_rinde,
 )
 
-st.set_page_config(
-    page_title="Desmote — Cosecha Algodón",
-    page_icon="🏭",
-    layout="wide",
-)
-
 inject_css()
 
 st.markdown("← [Volver al resumen](/) ", unsafe_allow_html=False)
