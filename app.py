@@ -5,7 +5,6 @@ import requests
 import plotly.express as px
 import io
 import os
-import time
 import datetime
 from dotenv import load_dotenv
 
@@ -46,7 +45,7 @@ def get_token():
 
 # ── fetch ─────────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=300, show_spinner="Cargando remitos...")
+@st.cache_data(show_spinner="Cargando remitos...")
 def fetch_remitos():
     token = get_token()
     resp = requests.get(
@@ -59,7 +58,7 @@ def fetch_remitos():
     df.columns = df.columns.str.lower()
     return df
 
-@st.cache_data(ttl=300, show_spinner="Cargando planificación SISA...")
+@st.cache_data(show_spinner="Cargando planificación...")
 def fetch_sisa():
     token = get_token()
     resp = requests.get(
@@ -583,7 +582,7 @@ with col_ts:
             <div style="text-align:right;color:rgba(255,255,255,0.75);font-size:0.78rem;line-height:1.7">
                 <div>Actualizado: <b style="color:white">{st.session_state.last_update}</b></div>
                 <div>Último remito: <b style="color:white">{ultimo_remito}</b></div>
-                <div style="font-size:0.70rem">↺ auto-refresh cada 5 min</div>
+                <div style="font-size:0.70rem">↺ usá el botón para actualizar</div>
             </div>
         </div>
         """,
@@ -705,27 +704,172 @@ if not sisa.empty:
     tot_en_est    = rc["en_establecimiento"].sum()
     tot_desmotado = rc["tn_desmotadas"].sum()
     pct_entrega   = tot_entreg / tot_prod * 100 if tot_prod > 0 else 0
-    pct_en_est    = tot_en_est / tot_prod * 100 if tot_prod > 0 else 0
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(kpi_card("Sup Sembrada",    f"{tot_semb:,.0f} ha"), unsafe_allow_html=True)
-    c2.markdown(kpi_card("Sup Cosechada",   f"{tot_cos:,.0f} ha"), unsafe_allow_html=True)
-    c3.markdown(kpi_card("% Cosechado",     f"{pct_cos:.1f}%"), unsafe_allow_html=True)
-    c4.markdown(kpi_card("Tn Planificadas", f"{tot_plan:,.1f} Tn"), unsafe_allow_html=True)
+    rinde_plan  = tot_plan / tot_semb if tot_semb > 0 else 0
+    rinde_obt   = tot_prod / tot_cos  if tot_cos  > 0 else 0
+    rinde_dev   = (rinde_obt - rinde_plan) / rinde_plan * 100 if rinde_plan > 0 else 0
+    pct_desmot  = tot_desmotado / tot_entreg * 100 if tot_entreg > 0 else 0
+    fibra_tn    = fibra_total / 1000 if not rem.empty else 0
+    fardos_n    = int(rem["cantidadproducidafardos"].sum()) if not rem.empty else 0
+    rd          = rd_total if not rem.empty else 0
+    rinde_color = "#00a651" if rd >= 28 else ("#d97706" if rd >= 24 else "#ea001d")
+    dev_class   = "kf-dev-up" if rinde_dev >= 0 else "kf-dev-down"
+    dev_arrow   = "▲" if rinde_dev >= 0 else "▼"
 
-    c5, c6, c7, c8 = st.columns(4)
-    c5.markdown(kpi_card("Tn Producidas", f"{tot_prod:,.1f} Tn",
-        delta=f"{tot_prod - tot_plan:+,.1f} Tn vs plan"), unsafe_allow_html=True)
-    c6.markdown(kpi_card("Entregado a Desm.", f"{tot_entreg:,.1f} Tn",
-        delta=f"{pct_entrega:.0f}% del total prod.", delta_color="off"), unsafe_allow_html=True)
-    c7.markdown(kpi_card("En Establecimiento", f"{tot_en_est:,.1f} Tn",
-        delta=f"{pct_en_est:.0f}% sin entregar", delta_color="inverse"), unsafe_allow_html=True)
-    c8.markdown(kpi_card("Tn Desmotadas", f"{tot_desmotado:,.1f} Tn"), unsafe_allow_html=True)
+    st.markdown(f"""
+<style>
+.kpi-flow {{
+  display: flex; align-items: stretch; gap: 0; margin: 16px 0 24px;
+}}
+.kf-station {{
+  flex: 1; background: white; border: 1px solid #e5e5e5;
+  border-top: 3px solid transparent; border-radius: 12px;
+  padding: 20px; display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 2px 2px rgba(0,0,0,0.04);
+}}
+.kf-station:hover {{ box-shadow: 0 4px 16px rgba(0,0,0,0.10); }}
+.kf-plan      {{ border-top-color: #006bff; }}
+.kf-harvest   {{ border-top-color: #00a651; }}
+.kf-logistics {{ border-top-color: #d97706; }}
+.kf-fiber     {{ border-top-color: #7c3aed; }}
+.kf-header {{ display: flex; align-items: center; gap: 10px; }}
+.kf-icon {{
+  width: 28px; height: 28px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}}
+.kf-plan      .kf-icon {{ background: #e6f0ff; }}
+.kf-harvest   .kf-icon {{ background: #e6f7ee; }}
+.kf-logistics .kf-icon {{ background: #fff6e0; }}
+.kf-fiber     .kf-icon {{ background: #f0e8ff; }}
+.kf-title {{ font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #6b6b6b; }}
+.kf-divider {{ height: 1px; background: #f2f2f2; }}
+.kf-list {{ display: flex; flex-direction: column; gap: 14px; }}
+.kf-item {{ display: flex; flex-direction: column; gap: 3px; }}
+.kf-label {{ font-size: 11px; font-weight: 500; color: #a8a8a8; letter-spacing: 0.01em; }}
+.kf-value-row {{ display: flex; align-items: baseline; gap: 4px; }}
+.kf-value {{ font-size: 26px; font-weight: 600; color: #171717; letter-spacing: -1px; line-height: 1; }}
+.kf-unit {{ font-size: 13px; color: #a8a8a8; }}
+.kf-dev {{
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 600; padding: 2px 7px;
+  border-radius: 9999px; width: fit-content; margin-top: 2px;
+}}
+.kf-dev-up   {{ background: #e6f7ee; color: #00a651; }}
+.kf-dev-down {{ background: #ffeaea; color: #ea001d; }}
+.kf-arrow {{
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 6px; width: 72px; flex-shrink: 0; padding: 0 2px;
+}}
+.kf-arrow-badge {{
+  background: #171717; color: white; font-size: 13px; font-weight: 600;
+  padding: 4px 10px; border-radius: 9999px; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+}}
+.kf-arrow-track {{ display: flex; align-items: center; width: 100%; }}
+.kf-line {{ flex: 1; height: 1.5px; background: #e5e5e5; }}
+.kf-chevron {{ color: #a8a8a8; font-size: 14px; line-height: 1; }}
+.kf-arrow-label {{ font-size: 10px; color: #a8a8a8; font-weight: 500; text-align: center; line-height: 1.3; }}
+</style>
+<div class="kpi-flow">
 
-    st.progress(
-        min(pct_entrega / 100, 1.0),
-        text=f"Entregado a desmotadora: {pct_entrega:.1f}% de lo producido",
-    )
+  <div class="kf-station kf-plan">
+    <div class="kf-header"><div class="kf-icon">📋</div><span class="kf-title">Planificado</span></div>
+    <div class="kf-divider"></div>
+    <div class="kf-list">
+      <div class="kf-item">
+        <span class="kf-label">Hectáreas sembradas</span>
+        <div class="kf-value-row"><span class="kf-value">{tot_semb:,.0f}</span><span class="kf-unit">ha</span></div>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Rinde bruto planificado</span>
+        <div class="kf-value-row"><span class="kf-value">{rinde_plan:,.2f}</span><span class="kf-unit">tn/ha</span></div>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Toneladas brutas planificadas</span>
+        <div class="kf-value-row"><span class="kf-value">{tot_plan:,.0f}</span><span class="kf-unit">tn</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="kf-arrow">
+    <div class="kf-arrow-badge">{pct_cos:.0f}%</div>
+    <div class="kf-arrow-track"><div class="kf-line"></div><span class="kf-chevron">›</span></div>
+    <div class="kf-arrow-label">avance<br>cosecha</div>
+  </div>
+
+  <div class="kf-station kf-harvest">
+    <div class="kf-header"><div class="kf-icon">🌾</div><span class="kf-title">Producción</span></div>
+    <div class="kf-divider"></div>
+    <div class="kf-list">
+      <div class="kf-item">
+        <span class="kf-label">Hectáreas cosechadas</span>
+        <div class="kf-value-row"><span class="kf-value">{tot_cos:,.0f}</span><span class="kf-unit">ha</span></div>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Rinde parcial</span>
+        <div class="kf-value-row"><span class="kf-value">{rinde_obt:,.2f}</span><span class="kf-unit">tn/ha</span></div>
+        <span class="kf-dev {dev_class}">{dev_arrow} {abs(rinde_dev):.1f}% vs plan</span>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Toneladas brutas producidas</span>
+        <div class="kf-value-row"><span class="kf-value">{tot_prod:,.0f}</span><span class="kf-unit">tn</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="kf-arrow">
+    <div class="kf-arrow-badge">{pct_entrega:.0f}%</div>
+    <div class="kf-arrow-track"><div class="kf-line"></div><span class="kf-chevron">›</span></div>
+    <div class="kf-arrow-label">entregado<br>a desmot.</div>
+  </div>
+
+  <div class="kf-station kf-logistics">
+    <div class="kf-header"><div class="kf-icon">🚛</div><span class="kf-title">Logística</span></div>
+    <div class="kf-divider"></div>
+    <div class="kf-list">
+      <div class="kf-item">
+        <span class="kf-label">Tn brutas en establecimiento</span>
+        <div class="kf-value-row"><span class="kf-value">{tot_en_est:,.1f}</span><span class="kf-unit">tn</span></div>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Tn entregadas a desmotadora</span>
+        <div class="kf-value-row"><span class="kf-value">{tot_entreg:,.1f}</span><span class="kf-unit">tn</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="kf-arrow">
+    <div class="kf-arrow-badge">{pct_desmot:.0f}%</div>
+    <div class="kf-arrow-track"><div class="kf-line"></div><span class="kf-chevron">›</span></div>
+    <div class="kf-arrow-label">bruto<br>desmotado</div>
+  </div>
+
+  <div class="kf-station kf-fiber">
+    <div class="kf-header"><div class="kf-icon">🧵</div><span class="kf-title">Desmote</span></div>
+    <div class="kf-divider"></div>
+    <div class="kf-list">
+      <div class="kf-item">
+        <span class="kf-label">Tn brutas desmotadas</span>
+        <div class="kf-value-row"><span class="kf-value">{tot_desmotado:,.1f}</span><span class="kf-unit">tn</span></div>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Rinde de fibra</span>
+        <div class="kf-value-row"><span class="kf-value" style="color:{rinde_color}">{rd:.1f}</span><span class="kf-unit">%</span></div>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Toneladas de fibra</span>
+        <div class="kf-value-row"><span class="kf-value">{fibra_tn:,.1f}</span><span class="kf-unit">tn</span></div>
+      </div>
+      <div class="kf-item">
+        <span class="kf-label">Fardos de fibra</span>
+        <div class="kf-value-row"><span class="kf-value">{fardos_n:,}</span><span class="kf-unit">fardos</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+""", unsafe_allow_html=True)
 
     rc_melt = rc[["campo", "entregado_tn", "en_establecimiento"]].melt(
         id_vars="campo",
@@ -1425,13 +1569,6 @@ with tab_desm:
 # ── footer ────────────────────────────────────────────────────────────────────
 st.divider()
 st.caption(
-    f"Datos con caché de 5 min · "
     f"Actualizado: {st.session_state.last_update} · "
     f"Economart / Grupo Duhau"
 )
-
-# ── auto-refresh cada 5 minutos ───────────────────────────────────────────────
-time.sleep(300)
-st.cache_data.clear()
-st.session_state.pop("last_update", None)
-st.rerun()
