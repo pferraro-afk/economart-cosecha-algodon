@@ -270,6 +270,8 @@ if not sisa.empty:
 </div>
 """, unsafe_allow_html=True)
 
+    rc = rc.sort_values("tn_producidas", ascending=False)
+
     rc_melt = rc[["campo", "entregado_tn", "en_establecimiento"]].melt(
         id_vars="campo",
         value_vars=["entregado_tn", "en_establecimiento"],
@@ -278,6 +280,7 @@ if not sisa.empty:
         "entregado_tn":       "Entregado a Desm.",
         "en_establecimiento": "En Establecimiento",
     })
+    orden_campos = rc["campo"].tolist()
     fig_rc = px.bar(
         rc_melt,
         x="campo", y="tn", color="estado", barmode="stack",
@@ -286,6 +289,7 @@ if not sisa.empty:
             "Entregado a Desm.":  "#2ecc71",
             "En Establecimiento": "#f39c12",
         },
+        category_orders={"campo": orden_campos},
     )
     fig_rc.add_scatter(
         x=rc["campo"], y=rc["tn_planificadas"],
