@@ -411,7 +411,7 @@ with tab_prod:
         download_btn(disp_sisa, "planificacion_campo.xlsx")
 
     st.divider()
-    st.page_link("pages/1_Produccion.py", label="Ver detalle completo de Producción →", icon="🌱")
+    st.caption("Usá el menú lateral para ver el detalle completo de Producción.")
 
 # ── TAB LOGÍSTICA ─────────────────────────────────────────────────────────────
 
@@ -458,7 +458,7 @@ with tab_log:
         download_btn(disp_desm, "logistica_desmotadora.xlsx")
 
     st.divider()
-    st.page_link("pages/2_Logistica.py", label="Ver detalle completo de Logística →", icon="🚚")
+    st.caption("Usá el menú lateral para ver el detalle completo de Logística.")
 
 # ── TAB DESMOTE ───────────────────────────────────────────────────────────────
 
@@ -514,7 +514,7 @@ with tab_desm:
         download_btn(disp_campo, "produccion_campo.xlsx")
 
     st.divider()
-    st.page_link("pages/3_Desmote.py", label="Ver detalle completo de Desmote →", icon="🏭")
+    st.caption("Usá el menú lateral para ver el detalle completo de Desmote.")
 
 # ── footer ────────────────────────────────────────────────────────────────────
 st.divider()
