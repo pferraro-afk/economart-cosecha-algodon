@@ -1,4 +1,11 @@
 import streamlit as st
+import sys
+import os
+
+# garantiza que el directorio raíz esté en sys.path cuando las páginas se ejecutan vía exec()
+_root = os.path.dirname(os.path.abspath(__file__))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 st.set_page_config(
     page_title="Cosecha Algodón — Duhau",
