@@ -36,10 +36,17 @@ rd_total      = fibra_total / consumo_total * 100 if consumo_total > 0 else 0
 
 # ── KPIs ─────────────────────────────────────────────────────────────────────
 
-c1, c2 = st.columns(2)
+_sup_semb_desm = vc["sup_ha"].sum() if "sup_ha" in vc.columns else 0
+_rinde_fibra_tnha = (fibra_total / 1000) / _sup_semb_desm if _sup_semb_desm > 0 else None
+
+c1, c2, c3 = st.columns(3)
 c1.markdown(kpi_card("Fibra Producida", f"{fibra_total / 1000:,.1f} Tn"), unsafe_allow_html=True)
 c2.markdown(kpi_card("Rinde Desmote", f"{rd_total:.1f}%",
     delta=f"{rd_total - 24:.1f}pp vs ref. 24%"), unsafe_allow_html=True)
+if _rinde_fibra_tnha is not None:
+    c3.markdown(kpi_card("Rinde Fibra", f"{_rinde_fibra_tnha:.3f} Tn/ha"), unsafe_allow_html=True)
+else:
+    c3.markdown(kpi_card("Rinde Fibra", "—"), unsafe_allow_html=True)
 
 st.divider()
 

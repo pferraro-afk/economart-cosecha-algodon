@@ -59,32 +59,52 @@ st.divider()
 
 # ── Gráficos ──────────────────────────────────────────────────────────────────
 
-col_g1, col_g2 = st.columns(2)
+st.subheader("Avance de cosecha por campo (%)")
+fig_av = px.bar(
+    vc_sisa.sort_values("avance_pct"),
+    x="avance_pct", y="lugar", orientation="h",
+    color="avance_pct",
+    color_continuous_scale=["#e74c3c", "#f39c12", "#27ae60"],
+    range_color=[0, 100],
+    labels={"avance_pct": "%", "lugar": ""},
+    text="avance_pct",
+)
+fig_av.update_traces(
+    texttemplate="%{text:.1f}%", textposition="outside",
+    hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
+)
+fig_av.update_layout(
+    height=420, margin=dict(l=0, r=40, t=0, b=0),
+    coloraxis_showscale=False,
+    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+)
+st.plotly_chart(fig_av, use_container_width=True)
 
-with col_g1:
-    st.subheader("Avance de cosecha por campo (%)")
-    fig_av = px.bar(
-        vc_sisa.sort_values("avance_pct"),
-        x="avance_pct", y="lugar", orientation="h",
-        color="avance_pct",
-        color_continuous_scale=["#e74c3c", "#f39c12", "#27ae60"],
-        range_color=[0, 100],
-        labels={"avance_pct": "%", "lugar": ""},
-        text="avance_pct",
+st.subheader("Rinde planificado vs producido por zona (kg/ha)")
+_zona_order = ["nea norte", "nea centro norte", "nea centro sur", "nea sur"]
+_has_zona = "zona" in vc_sisa.columns and vc_sisa["zona"].notna().any()
+if _has_zona:
+    df_rinde_melt = vc_sisa.melt(
+        id_vars=["lugar", "zona"],
+        value_vars=["rinde_esp_kgha", "rinde_obt_kgha"],
+        var_name="tipo", value_name="kg_ha",
+    ).replace({"rinde_esp_kgha": "Planificado", "rinde_obt_kgha": "Producido"})
+    _zones_present = [z for z in _zona_order if z in df_rinde_melt["zona"].dropna().unique().tolist()]
+    fig_rinde = px.bar(
+        df_rinde_melt,
+        x="lugar", y="kg_ha", color="tipo", barmode="group",
+        facet_col="zona", facet_col_wrap=2,
+        category_orders={"zona": _zones_present},
+        labels={"kg_ha": "kg/ha", "lugar": "", "tipo": ""},
+        color_discrete_map={"Planificado": "#aed6f1", "Producido": "#2ecc71"},
     )
-    fig_av.update_traces(
-        texttemplate="%{text:.1f}%", textposition="outside",
-        hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
-    )
-    fig_av.update_layout(
-        height=420, margin=dict(l=0, r=40, t=0, b=0),
-        coloraxis_showscale=False,
+    fig_rinde.update_layout(
+        height=600, margin=dict(l=0, r=0, t=40, b=0), legend_title="",
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_av, use_container_width=True)
-
-with col_g2:
-    st.subheader("Rinde planificado vs producido (kg/ha)")
+    fig_rinde.update_xaxes(tickangle=-30)
+    fig_rinde.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1].title()))
+else:
     df_rinde_melt = vc_sisa.melt(
         id_vars="lugar",
         value_vars=["rinde_esp_kgha", "rinde_obt_kgha"],
@@ -100,7 +120,7 @@ with col_g2:
         height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_rinde, use_container_width=True)
+st.plotly_chart(fig_rinde, use_container_width=True)
 
 # ── Tabla detalle por campo ───────────────────────────────────────────────────
 

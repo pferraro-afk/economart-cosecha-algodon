@@ -102,6 +102,8 @@ def clean_sisa(df):
     for col in ["lugar", "empresasucursal", "empresa"]:
         if col in df.columns:
             df[col] = df[col].str.strip()
+    if "zona" in df.columns:
+        df["zona"] = df["zona"].str.strip().str.lower()
     return df
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -200,36 +202,124 @@ def sem_avance_entrega(val):
     if val >= 50: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
     return "background-color:#fadbd8;color:#c0392b;font-weight:700"
 
+def sem_desvio_kgha(val):
+    if pd.isna(val): return ""
+    if val >= 0:    return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val >= -200: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
+
+# ── HTML cosecha table ────────────────────────────────────────────────────────
+
+def _avance_cell_style(v):
+    if pd.isna(v): return "background:#f5f5f5;color:#aaa"
+    if v >= 90:    return "background:#d5f5e3;color:#1a7a40;font-weight:700"
+    if v >= 70:    return "background:#e9f7ef;color:#27ae60;font-weight:700"
+    if v >= 50:    return "background:#fef9e7;color:#b7950b;font-weight:700"
+    if v >= 30:    return "background:#fdebd0;color:#d35400;font-weight:700"
+    return "background:#fadbd8;color:#c0392b;font-weight:700"
+
+def _rrro_cell_style(v):
+    if pd.isna(v): return "background:#f5f5f5;color:#aaa"
+    if v >= 0:    return "background:#d5f5e3;color:#1a7a40;font-weight:700"
+    if v >= -10:  return "background:#fef9e7;color:#b7950b;font-weight:700"
+    return "background:#fadbd8;color:#c0392b;font-weight:700"
+
+def _fibra_cell_style(v):
+    if pd.isna(v): return "background:#f5f5f5;color:#aaa"
+    if v >= 28:   return "background:#d5f5e3;color:#1a7a40;font-weight:700"
+    if v >= 24:   return "background:#fef9e7;color:#b7950b;font-weight:700"
+    return "background:#fadbd8;color:#c0392b;font-weight:700"
+
+def _f(v, fmt, suffix=""):
+    return "—" if (v is None or (isinstance(v, float) and pd.isna(v))) else f"{v:{fmt}}{suffix}"
+
+def render_cosecha_html(rows):
+    tbody = ""
+    for idx, row in enumerate(rows):
+        is_total = row.get("campo") == "TOTAL"
+        row_bg = "background:#e8f5e9" if is_total else ("background:#f9f9f9" if idx % 2 == 0 else "background:#ffffff")
+        fw     = "font-weight:800;color:#1a5c2a" if is_total else "font-weight:400;color:#222"
+        td     = "padding:9px 14px;border-bottom:1px solid #eee"
+        av   = row.get("pct_cosechado")
+        rrro = row.get("var_rinde_pct")
+        fib  = row.get("rinde_desmote_pct")
+        av_s   = _avance_cell_style(av)
+        rrro_s = _rrro_cell_style(rrro)
+        fib_s  = _fibra_cell_style(fib)
+        rrro_str = "—" if (rrro is None or (isinstance(rrro, float) and pd.isna(rrro))) else f"{rrro:+.1f}%"
+        tbody += f"""
+<tr style="{row_bg}">
+  <td style="{td};{fw}">{row.get('campo','')}</td>
+  <td style="{td};text-align:right;color:#333">{_f(row.get('sup_sembrada'), ',.0f')}</td>
+  <td style="{td};text-align:center;{av_s}">{_f(av, '.1f', '%')}</td>
+  <td style="{td};text-align:right;color:#333">{_f(row.get('sup_cosechada'), ',.0f')}</td>
+  <td style="{td};text-align:right;color:#333">{_f(row.get('rinde_plan_kgha'), ',.0f')}</td>
+  <td style="{td};text-align:right;color:#333">{_f(row.get('rinde_obt_kgha'), ',.0f')}</td>
+  <td style="{td};text-align:center;{rrro_s}">{rrro_str}</td>
+  <td style="{td};text-align:center;{fib_s}">{_f(fib, '.1f', '%')}</td>
+  <td style="{td};text-align:right;color:#333">{_f(row.get('rinde_neto_kgha'), ',.0f')}</td>
+</tr>"""
+    return f"""
+<div style="overflow-x:auto;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.08);margin:10px 0 4px 0">
+<table style="width:100%;border-collapse:collapse;font-size:0.84rem;font-family:system-ui,sans-serif">
+  <thead>
+    <tr style="background:#1a5c2a;color:white">
+      <th style="padding:11px 14px;text-align:left;font-weight:700;letter-spacing:.02em">Campo</th>
+      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">Sup Semb (ha)</th>
+      <th style="padding:11px 14px;text-align:center;font-weight:700;white-space:nowrap">Avance %</th>
+      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">Sup Cos (ha)</th>
+      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">RO (kg/ha)</th>
+      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">RR (kg/ha)</th>
+      <th style="padding:11px 14px;text-align:center;font-weight:700;white-space:nowrap">RR/RO %</th>
+      <th style="padding:11px 14px;text-align:center;font-weight:700;white-space:nowrap">R. Fibra %</th>
+      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">R. Neto (kg/ha)</th>
+    </tr>
+  </thead>
+  <tbody>{tbody}</tbody>
+</table>
+</div>"""
+
 # ── aggregations ──────────────────────────────────────────────────────────────
 
 def resumen_cruzado(sisa_df, rem_df):
     sisa_agg = sisa_df.groupby("lugar").agg(
+        sup_planificada   = ("superficieplanificada",       "sum"),
         sup_sembrada      = ("superficiesembrada",          "sum"),
         sup_cosechada     = ("superficiecosechada",         "sum"),
         tn_planificadas   = ("tnplanificados",              "sum"),
         tn_producidas     = ("tnproducidos",                "sum"),
     ).reset_index().rename(columns={"lugar": "campo"})
-    sisa_agg["pct_cosechado"] = (
-        sisa_agg["sup_cosechada"] / sisa_agg["sup_sembrada"] * 100
-    ).where(sisa_agg["sup_sembrada"] > 0)
+    sisa_agg["pct_cosechado"]    = (sisa_agg["sup_cosechada"] / sisa_agg["sup_sembrada"] * 100).where(sisa_agg["sup_sembrada"] > 0)
+    sisa_agg["rinde_obt_kgha"]  = (sisa_agg["tn_producidas"] * 1000 / sisa_agg["sup_sembrada"]).where(sisa_agg["sup_sembrada"] > 0)
+    sisa_agg["rinde_plan_kgha"] = (sisa_agg["tn_planificadas"] * 1000 / sisa_agg["sup_planificada"]).where(sisa_agg["sup_planificada"] > 0)
 
     rem_agg = rem_df.groupby("establecimiento").agg(
-        entregado_tn  = ("cantidad",        "sum"),
-        tn_desmotadas = ("cantidadconsumo", "sum"),
+        entregado_tn  = ("cantidad",               "sum"),
+        tn_desmotadas = ("cantidadconsumo",        "sum"),
+        fibra_kg      = ("cantidadproducidakilos", "sum"),
     ).reset_index().rename(columns={"establecimiento": "campo"})
-    rem_agg["entregado_tn"]  /= 1000
-    rem_agg["tn_desmotadas"] /= 1000
+    rem_agg["entregado_tn"]  = rem_agg["entregado_tn"]  / 1000
+    rem_agg["tn_desmotadas"] = rem_agg["tn_desmotadas"] / 1000
+    rem_agg["fibra_tn"]      = rem_agg["fibra_kg"]      / 1000
 
     g = sisa_agg.merge(rem_agg, on="campo", how="left")
     g["entregado_tn"]       = g["entregado_tn"].fillna(0)
     g["tn_desmotadas"]      = g["tn_desmotadas"].fillna(0)
+    g["fibra_tn"]           = g["fibra_tn"].fillna(0)
     g["en_establecimiento"] = (g["tn_producidas"] - g["entregado_tn"]).clip(lower=0)
     g["avance_entrega_pct"] = (g["entregado_tn"] / g["tn_producidas"] * 100).where(g["tn_producidas"] > 0)
     g["cumpl_plan_pct"]     = (g["tn_producidas"] / g["tn_planificadas"] * 100).where(g["tn_planificadas"] > 0)
+    g["rinde_fibra_kgha"]   = (g["fibra_tn"] * 1000 / g["sup_sembrada"]).where(g["sup_sembrada"] > 0)
+    g["rinde_neto_kgha"]    = (g["tn_desmotadas"] * 1000 / g["sup_sembrada"]).where(g["sup_sembrada"] > 0)
+    g["var_rinde_kgha"]     = g["rinde_obt_kgha"] - g["rinde_plan_kgha"]
+    g["rinde_desmote_pct"]  = (g["fibra_tn"] / g["tn_desmotadas"] * 100).where(g["tn_desmotadas"] > 0)
+    g["var_rinde_pct"]      = (g["var_rinde_kgha"] / g["rinde_plan_kgha"] * 100).where(
+        g["rinde_plan_kgha"].notna() & (g["rinde_plan_kgha"] > 0)
+    )
     return g.sort_values("campo")
 
 def agg_campo_sisa(df):
-    g = df.groupby(["empresasucursal", "lugar"]).agg(
+    _agg = dict(
         sup_planificada = ("superficieplanificada", "sum"),
         sup_sembrada    = ("superficiesembrada",    "sum"),
         sup_cosechada   = ("superficiecosechada",   "sum"),
@@ -237,7 +327,10 @@ def agg_campo_sisa(df):
         tn_producidas   = ("tnproducidos",          "sum"),
         tn_resto        = ("restoacosechar",        "sum"),
         lotes           = ("lote",                 "count"),
-    ).reset_index()
+    )
+    if "zona" in df.columns:
+        _agg["zona"] = ("zona", "first")
+    g = df.groupby(["empresasucursal", "lugar"]).agg(**_agg).reset_index()
     g["avance_pct"]     = (g["sup_cosechada"] / g["sup_sembrada"] * 100).where(g["sup_sembrada"] > 0)
     g["rinde_esp_kgha"] = (g["tn_planificadas"] * 1000 / g["sup_planificada"]).where(g["sup_planificada"] > 0)
     g["rinde_obt_kgha"] = (g["tn_producidas"]   * 1000 / g["sup_sembrada"]).where(g["sup_sembrada"] > 0)

@@ -8,6 +8,7 @@ from utils import (
     resumen_cruzado, agg_campo_sisa, agg_campo_rem, agg_desmotadora,
     sup_lote, totales_row, style_total_row, fmt_num, download_btn,
     sem_avance, sem_desvio, sem_rinde, sem_en_est, sem_avance_entrega,
+    render_cosecha_html,
 )
 
 inject_css()
@@ -104,11 +105,12 @@ if not sisa.empty:
     tot_desmotado = rc["tn_desmotadas"].sum()
     pct_entrega   = tot_entreg / tot_prod * 100 if tot_prod > 0 else 0
 
-    rinde_plan  = tot_plan / tot_semb if tot_semb > 0 else 0
-    rinde_obt   = tot_prod / tot_cos  if tot_cos  > 0 else 0
-    rinde_dev   = (rinde_obt - rinde_plan) / rinde_plan * 100 if rinde_plan > 0 else 0
-    pct_desmot  = tot_desmotado / tot_entreg * 100 if tot_entreg > 0 else 0
-    fibra_tn    = fibra_total / 1000 if not rem.empty else 0
+    rinde_plan       = tot_plan / tot_semb if tot_semb > 0 else 0
+    rinde_obt        = tot_prod / tot_cos  if tot_cos  > 0 else 0
+    rinde_dev        = (rinde_obt - rinde_plan) / rinde_plan * 100 if rinde_plan > 0 else 0
+    pct_desmot       = tot_desmotado / tot_entreg * 100 if tot_entreg > 0 else 0
+    fibra_tn         = fibra_total / 1000 if not rem.empty else 0
+    rinde_fibra_tnha = fibra_tn / tot_semb if tot_semb > 0 else 0
     fardos_n    = int(rem["cantidadproducidafardos"].sum()) if not rem.empty else 0
     rd          = rd_total if not rem.empty else 0
     rinde_color = "#00a651" if rd >= 28 else ("#d97706" if rd >= 24 else "#ea001d")
@@ -257,6 +259,10 @@ if not sisa.empty:
         <div class="kf-value-row"><span class="kf-value" style="color:{rinde_color}">{rd:.1f}</span><span class="kf-unit">%</span></div>
       </div>
       <div class="kf-item">
+        <span class="kf-label">Rinde fibra parcial</span>
+        <div class="kf-value-row"><span class="kf-value">{rinde_fibra_tnha:.3f}</span><span class="kf-unit">tn/ha</span></div>
+      </div>
+      <div class="kf-item">
         <span class="kf-label">Toneladas de fibra</span>
         <div class="kf-value-row"><span class="kf-value">{fibra_tn:,.1f}</span><span class="kf-unit">tn</span></div>
       </div>
@@ -270,7 +276,7 @@ if not sisa.empty:
 </div>
 """, unsafe_allow_html=True)
 
-    rc = rc.sort_values("tn_producidas", ascending=False)
+    rc = rc.sort_values("tn_planificadas", ascending=False)
 
     rc_melt = rc[["campo", "entregado_tn", "en_establecimiento"]].melt(
         id_vars="campo",
@@ -281,6 +287,20 @@ if not sisa.empty:
         "en_establecimiento": "En Establecimiento",
     })
     orden_campos = rc["campo"].tolist()
+
+    tick_labels = []
+    for _, row in rc.iterrows():
+        rr = row.get("rinde_obt_kgha")
+        ro = row.get("rinde_plan_kgha")
+        rr_str = f"{rr:,.0f}" if (rr is not None and not pd.isna(rr)) else "—"
+        if ro is not None and not pd.isna(ro) and ro > 0 and rr is not None and not pd.isna(rr):
+            var = (rr - ro) / ro * 100
+            sign = "+" if var >= 0 else ""
+            sub = f"<br><sub style='font-size:10px;color:#888'>{rr_str} kg/ha ({sign}{var:.0f}% vs RO)</sub>"
+        else:
+            sub = f"<br><sub style='font-size:10px;color:#888'>{rr_str} kg/ha</sub>"
+        tick_labels.append(row["campo"] + sub)
+
     fig_rc = px.bar(
         rc_melt,
         x="campo", y="tn", color="estado", barmode="stack",
@@ -297,42 +317,70 @@ if not sisa.empty:
         marker=dict(symbol="diamond", size=12, color="#2980b9",
                     line=dict(width=1, color="#1a5276")),
     )
+    for _, row in rc.iterrows():
+        pct = row.get("pct_cosechado")
+        if pct is not None and not pd.isna(pct):
+            fig_rc.add_annotation(
+                x=row["campo"],
+                y=row["tn_producidas"],
+                text=f"🌾 {pct:.0f}%",
+                showarrow=False,
+                yshift=12,
+                font=dict(size=11, color="#1a5c2a", family="system-ui"),
+            )
     fig_rc.update_layout(
-        height=380, margin=dict(l=0, r=0, t=10, b=40),
+        height=400, margin=dict(l=0, r=0, t=30, b=80),
         legend_title="", xaxis_tickangle=-30,
+    )
+    fig_rc.update_xaxes(
+        tickmode="array",
+        tickvals=orden_campos,
+        ticktext=tick_labels,
     )
     st.plotly_chart(fig_rc, use_container_width=True)
 
     st.divider()
 
-    disp_rc = rc.rename(columns={
-        "campo":              "Campo",
-        "sup_sembrada":       "Sup Semb ha",
-        "sup_cosechada":      "Sup Cos ha",
-        "pct_cosechado":      "% Cosechado",
-        "tn_planificadas":    "Tn Plan",
-        "tn_producidas":      "Tn Prod",
-        "cumpl_plan_pct":     "% vs Plan",
-        "entregado_tn":       "Entregado Tn",
-        "avance_entrega_pct": "% Entregado",
-        "en_establecimiento": "En Estab. Tn",
-        "tn_desmotadas":      "Tn Desmotadas",
+    rows_html = []
+    for _, row in rc.iterrows():
+        rows_html.append({
+            "campo":             row["campo"],
+            "sup_sembrada":      row.get("sup_sembrada"),
+            "sup_cosechada":     row.get("sup_cosechada"),
+            "pct_cosechado":     row.get("pct_cosechado"),
+            "rinde_plan_kgha":   row.get("rinde_plan_kgha"),
+            "rinde_obt_kgha":    row.get("rinde_obt_kgha"),
+            "var_rinde_pct":     row.get("var_rinde_pct"),
+            "rinde_desmote_pct": row.get("rinde_desmote_pct"),
+            "rinde_neto_kgha":   row.get("rinde_neto_kgha"),
+        })
+    _ts  = rc["sup_sembrada"].sum()
+    _tc  = rc["sup_cosechada"].sum()
+    _tp  = rc["tn_planificadas"].sum()
+    _tprod = rc["tn_producidas"].sum()
+    _tdesm = rc["tn_desmotadas"].sum()
+    _tfibn = rc["fibra_tn"].sum() if "fibra_tn" in rc.columns else 0
+    _tplan_sup = rc["sup_planificada"].sum() if "sup_planificada" in rc.columns else 0
+    _ro_tot = _tp * 1000 / _tplan_sup if _tplan_sup > 0 else None
+    _rr_tot = _tprod * 1000 / _ts if _ts > 0 else None
+    _var_tot = (_rr_tot - _ro_tot) / _ro_tot * 100 if (_ro_tot and _ro_tot > 0 and _rr_tot is not None) else None
+    rows_html.append({
+        "campo":             "TOTAL",
+        "sup_sembrada":      _ts,
+        "sup_cosechada":     _tc,
+        "pct_cosechado":     _tc / _ts * 100 if _ts > 0 else None,
+        "rinde_plan_kgha":   _ro_tot,
+        "rinde_obt_kgha":    _rr_tot,
+        "var_rinde_pct":     _var_tot,
+        "rinde_desmote_pct": _tfibn / _tdesm * 100 if _tdesm > 0 else None,
+        "rinde_neto_kgha":   _tdesm * 1000 / _ts if _ts > 0 else None,
     })
-    disp_rc_tot = totales_row(disp_rc, "Campo")
-    n = len(disp_rc)
-    st.dataframe(
-        style_total_row(
-            disp_rc_tot.style
-                .format(fmt_num(disp_rc_tot), na_rep="—")
-                .map(sem_en_est,        subset=["En Estab. Tn"])
-                .map(sem_avance_entrega, subset=["% Entregado"])
-                .map(sem_avance,        subset=["% Cosechado"]),
-            n,
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
-    download_btn(disp_rc, "resumen_general.xlsx")
+    st.markdown(render_cosecha_html(rows_html), unsafe_allow_html=True)
+    download_btn(rc[["campo", "sup_sembrada", "sup_cosechada", "pct_cosechado",
+                      "tn_planificadas", "tn_producidas", "entregado_tn",
+                      "tn_desmotadas", "rinde_plan_kgha", "rinde_obt_kgha",
+                      "var_rinde_pct", "rinde_desmote_pct", "rinde_neto_kgha"]],
+                 "resumen_general.xlsx")
 
 else:
     st.info("Sin datos de planificación para los filtros seleccionados.")
