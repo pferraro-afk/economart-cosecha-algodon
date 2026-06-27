@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import plotly.express as px
 
 from utils import (
@@ -59,30 +60,52 @@ st.divider()
 
 # ── Gráficos ──────────────────────────────────────────────────────────────────
 
-st.subheader("Rinde planificado vs producido por zona (kg/ha)")
+st.subheader("Rinde planificado vs producido (kg/ha)")
 _zona_order = ["nea norte", "nea centro norte", "nea centro sur", "nea sur"]
 _has_zona = "zona" in vc_sisa.columns and vc_sisa["zona"].notna().any()
+
 if _has_zona:
-    df_rinde_melt = vc_sisa.melt(
+    _zona_cat = pd.Categorical(vc_sisa["zona"], categories=_zona_order, ordered=True)
+    _vc_sorted = vc_sisa.assign(zona=_zona_cat).sort_values(["zona", "lugar"])
+    _lugar_order = _vc_sorted["lugar"].unique().tolist()
+    df_rinde_melt = _vc_sorted.melt(
         id_vars=["lugar", "zona"],
         value_vars=["rinde_esp_kgha", "rinde_obt_kgha"],
         var_name="tipo", value_name="kg_ha",
     ).replace({"rinde_esp_kgha": "Planificado", "rinde_obt_kgha": "Producido"})
-    _zones_present = [z for z in _zona_order if z in df_rinde_melt["zona"].dropna().unique().tolist()]
     fig_rinde = px.bar(
         df_rinde_melt,
         x="lugar", y="kg_ha", color="tipo", barmode="group",
-        facet_col="zona", facet_col_wrap=2,
-        category_orders={"zona": _zones_present},
+        category_orders={"lugar": _lugar_order},
         labels={"kg_ha": "kg/ha", "lugar": "", "tipo": ""},
         color_discrete_map={"Planificado": "#aed6f1", "Producido": "#2ecc71"},
     )
+    # separadores y etiquetas de zona
+    _zone_sizes = _vc_sorted.groupby("zona", observed=True)["lugar"].nunique()
+    _x_pos = -0.5
+    for _z in _zona_order:
+        if _z not in _zone_sizes.index:
+            continue
+        _n = _zone_sizes[_z]
+        _label_x = _x_pos + _n / 2
+        fig_rinde.add_annotation(
+            x=_label_x, y=1.06, xref="x", yref="paper",
+            text=f"<b>{_z.title()}</b>",
+            showarrow=False, font=dict(size=11, color="#555"),
+            bgcolor="rgba(240,240,240,0.7)", borderpad=3,
+        )
+        if _x_pos > -0.5:
+            fig_rinde.add_shape(
+                type="line", x0=_x_pos, x1=_x_pos, y0=0, y1=1,
+                xref="x", yref="paper",
+                line=dict(color="#ccc", width=1, dash="dot"),
+            )
+        _x_pos += _n
     fig_rinde.update_layout(
-        height=600, margin=dict(l=0, r=0, t=40, b=0), legend_title="",
+        height=460, margin=dict(l=0, r=0, t=50, b=60), legend_title="",
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
     fig_rinde.update_xaxes(tickangle=-30)
-    fig_rinde.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1].title()))
 else:
     df_rinde_melt = vc_sisa.melt(
         id_vars="lugar",
