@@ -234,45 +234,105 @@ def _f(v, fmt, suffix=""):
     return "—" if (v is None or (isinstance(v, float) and pd.isna(v))) else f"{v:{fmt}}{suffix}"
 
 def render_cosecha_html(rows):
+
+    def _avance_bar(av):
+        if av is None or (isinstance(av, float) and pd.isna(av)):
+            return '<span style="color:#bbb">—</span>'
+        pct = min(max(av, 0), 100)
+        if av >= 90:   bc, tc = "#27ae60", "#fff"
+        elif av >= 70: bc, tc = "#2ecc71", "#fff"
+        elif av >= 50: bc, tc = "#f39c12", "#fff"
+        elif av >= 30: bc, tc = "#e67e22", "#fff"
+        else:          bc, tc = "#e74c3c", "#fff"
+        return (
+            f'<div style="position:relative;background:#e0e0e0;border-radius:5px;'
+            f'height:22px;min-width:84px;overflow:hidden">'
+            f'<div style="position:absolute;left:0;top:0;height:100%;width:{pct:.0f}%;background:{bc}"></div>'
+            f'<span style="position:absolute;inset:0;display:flex;align-items:center;'
+            f'justify-content:center;font-weight:700;font-size:0.76rem;color:{tc}">'
+            f'{av:.1f}%</span></div>'
+        )
+
+    def _rrro_badge(val):
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return '<span style="color:#bbb">—</span>'
+        if val >= 0:     bg, color = "#d5f5e3", "#1a7a40"
+        elif val >= -10: bg, color = "#fef9e7", "#b7950b"
+        else:            bg, color = "#fadbd8", "#c0392b"
+        arrow = "▲" if val >= 0 else "▼"
+        return (f'<span style="background:{bg};color:{color};padding:3px 10px;'
+                f'border-radius:20px;font-weight:700;font-size:0.78rem">'
+                f'{arrow} {val:+.1f}%</span>')
+
+    def _fibra_badge(val):
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return '<span style="color:#bbb">—</span>'
+        if val >= 28:   bg, color = "#d5f5e3", "#1a7a40"
+        elif val >= 24: bg, color = "#fef9e7", "#b7950b"
+        else:           bg, color = "#fadbd8", "#c0392b"
+        return (f'<span style="background:{bg};color:{color};padding:3px 10px;'
+                f'border-radius:20px;font-weight:700;font-size:0.78rem">'
+                f'{val:.1f}%</span>')
+
+    def _num(v, fmt):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return '<span style="color:#bbb">—</span>'
+        return f"{v:{fmt}}"
+
     tbody = ""
     for idx, row in enumerate(rows):
         is_total = row.get("campo") == "TOTAL"
-        row_bg = "background:#e8f5e9" if is_total else ("background:#f9f9f9" if idx % 2 == 0 else "background:#ffffff")
-        fw     = "font-weight:800;color:#1a5c2a" if is_total else "font-weight:400;color:#222"
-        td     = "padding:9px 14px;border-bottom:1px solid #eee"
-        av   = row.get("pct_cosechado")
-        rrro = row.get("var_rinde_pct")
-        fib  = row.get("rinde_desmote_pct")
-        av_s   = _avance_cell_style(av)
-        rrro_s = _rrro_cell_style(rrro)
-        fib_s  = _fibra_cell_style(fib)
-        rrro_str = "—" if (rrro is None or (isinstance(rrro, float) and pd.isna(rrro))) else f"{rrro:+.1f}%"
+        if is_total:
+            row_style  = "background:#e8f5e9"
+            sep        = ";border-top:2px solid #27ae60"
+            campo_s    = f"padding:11px 16px;font-weight:800;color:#1a5c2a;font-size:0.88rem{sep};border-bottom:1px solid #d0ead8"
+        else:
+            row_style  = "background:#f8fafc" if idx % 2 == 0 else "background:#fff"
+            sep        = ""
+            campo_s    = "padding:11px 16px;font-weight:600;color:#1a3c2a;font-size:0.83rem;border-bottom:1px solid #f0f0f0"
+
+        td_r = f"padding:9px 14px;border-bottom:1px solid #f0f0f0;text-align:right;color:#444;font-variant-numeric:tabular-nums{sep}"
+        td_c = f"padding:7px 10px;border-bottom:1px solid #f0f0f0;text-align:center{sep}"
+
         tbody += f"""
-<tr style="{row_bg}">
-  <td style="{td};{fw}">{row.get('campo','')}</td>
-  <td style="{td};text-align:right;color:#333">{_f(row.get('sup_sembrada'), ',.0f')}</td>
-  <td style="{td};text-align:center;{av_s}">{_f(av, '.1f', '%')}</td>
-  <td style="{td};text-align:right;color:#333">{_f(row.get('sup_cosechada'), ',.0f')}</td>
-  <td style="{td};text-align:right;color:#333">{_f(row.get('rinde_plan_kgha'), ',.0f')}</td>
-  <td style="{td};text-align:right;color:#333">{_f(row.get('rinde_obt_kgha'), ',.0f')}</td>
-  <td style="{td};text-align:center;{rrro_s}">{rrro_str}</td>
-  <td style="{td};text-align:center;{fib_s}">{_f(fib, '.1f', '%')}</td>
-  <td style="{td};text-align:right;color:#333">{_f(row.get('rinde_neto_kgha'), ',.0f')}</td>
+<tr style="{row_style}">
+  <td style="{campo_s}">{row.get('campo','')}</td>
+  <td style="{td_r}">{_num(row.get('sup_sembrada'), ',.0f')}</td>
+  <td style="{td_c}">{_avance_bar(row.get('pct_cosechado'))}</td>
+  <td style="{td_r}">{_num(row.get('sup_cosechada'), ',.0f')}</td>
+  <td style="{td_r};color:#666">{_num(row.get('rinde_plan_kgha'), ',.0f')}</td>
+  <td style="{td_r};color:#1a3c2a;font-weight:700">{_num(row.get('rinde_obt_kgha'), ',.0f')}</td>
+  <td style="{td_c}">{_rrro_badge(row.get('var_rinde_pct'))}</td>
+  <td style="{td_c}">{_fibra_badge(row.get('rinde_desmote_pct'))}</td>
+  <td style="{td_r}">{_num(row.get('rinde_neto_kgha'), ',.0f')}</td>
 </tr>"""
+
+    _th_grp = ("padding:9px 14px;text-align:center;font-weight:700;font-size:0.71rem;"
+               "letter-spacing:.08em;text-transform:uppercase;"
+               "border-bottom:1px solid rgba(255,255,255,0.18)")
+    _th_fld = ("padding:7px 12px;font-weight:500;font-size:0.72rem;"
+               "color:rgba(255,255,255,0.80);white-space:nowrap;"
+               "border-top:1px solid rgba(255,255,255,0.12)")
+
     return f"""
-<div style="overflow-x:auto;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.08);margin:10px 0 4px 0">
-<table style="width:100%;border-collapse:collapse;font-size:0.84rem;font-family:system-ui,sans-serif">
+<div style="overflow-x:auto;border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,0.10);margin:14px 0 8px 0">
+<table style="width:100%;border-collapse:collapse;font-family:system-ui,-apple-system,sans-serif">
   <thead>
     <tr style="background:#1a5c2a;color:white">
-      <th style="padding:11px 14px;text-align:left;font-weight:700;letter-spacing:.02em">Campo</th>
-      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">Sup Semb (ha)</th>
-      <th style="padding:11px 14px;text-align:center;font-weight:700;white-space:nowrap">Avance %</th>
-      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">Sup Cos (ha)</th>
-      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">RO (kg/ha)</th>
-      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">RR (kg/ha)</th>
-      <th style="padding:11px 14px;text-align:center;font-weight:700;white-space:nowrap">RR/RO %</th>
-      <th style="padding:11px 14px;text-align:center;font-weight:700;white-space:nowrap">R. Fibra %</th>
-      <th style="padding:11px 14px;text-align:right;font-weight:700;white-space:nowrap">R. Neto (kg/ha)</th>
+      <th rowspan="2" style="padding:14px 16px;text-align:left;font-weight:700;font-size:0.84rem;vertical-align:middle;border-right:1px solid rgba(255,255,255,0.12)">Campo</th>
+      <th colspan="3" style="{_th_grp}">🌱 Superficie</th>
+      <th colspan="3" style="{_th_grp};background:#155224">📊 Rinde vs Plan</th>
+      <th colspan="2" style="{_th_grp};background:#0f3d1a">🧵 Desmote</th>
+    </tr>
+    <tr style="background:#1a5c2a;color:white">
+      <th style="{_th_fld};text-align:right">Sembrada (ha)</th>
+      <th style="{_th_fld};text-align:center">Avance</th>
+      <th style="{_th_fld};text-align:right">Cosechada (ha)</th>
+      <th style="{_th_fld};text-align:right;background:#155224">RO (kg/ha)</th>
+      <th style="{_th_fld};text-align:right;background:#155224">RR (kg/ha)</th>
+      <th style="{_th_fld};text-align:center;background:#155224">RR vs RO</th>
+      <th style="{_th_fld};text-align:center;background:#0f3d1a">Rinde Fibra</th>
+      <th style="{_th_fld};text-align:right;background:#0f3d1a">Rinde Neto (kg/ha)</th>
     </tr>
   </thead>
   <tbody>{tbody}</tbody>
