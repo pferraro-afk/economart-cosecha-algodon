@@ -59,27 +59,6 @@ st.divider()
 
 # ── Gráficos ──────────────────────────────────────────────────────────────────
 
-st.subheader("Avance de cosecha por campo (%)")
-fig_av = px.bar(
-    vc_sisa.sort_values("avance_pct"),
-    x="avance_pct", y="lugar", orientation="h",
-    color="avance_pct",
-    color_continuous_scale=["#e74c3c", "#f39c12", "#27ae60"],
-    range_color=[0, 100],
-    labels={"avance_pct": "%", "lugar": ""},
-    text="avance_pct",
-)
-fig_av.update_traces(
-    texttemplate="%{text:.1f}%", textposition="outside",
-    hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
-)
-fig_av.update_layout(
-    height=420, margin=dict(l=0, r=40, t=0, b=0),
-    coloraxis_showscale=False,
-    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-)
-st.plotly_chart(fig_av, use_container_width=True)
-
 st.subheader("Rinde planificado vs producido por zona (kg/ha)")
 _zona_order = ["nea norte", "nea centro norte", "nea centro sur", "nea sur"]
 _has_zona = "zona" in vc_sisa.columns and vc_sisa["zona"].notna().any()
