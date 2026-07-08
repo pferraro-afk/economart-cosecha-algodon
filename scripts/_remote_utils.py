@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
@@ -102,8 +102,6 @@ def clean_sisa(df):
     for col in ["lugar", "empresasucursal", "empresa"]:
         if col in df.columns:
             df[col] = df[col].str.strip()
-    if "zona" in df.columns:
-        df["zona"] = df["zona"].str.strip().str.lower()
     return df
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -143,7 +141,7 @@ def totales_row(df, label_col, label="TOTAL"):
 def style_total_row(styled, n_rows):
     return styled.apply(
         lambda row: [
-            "font-weight:800;background-color:rgba(232,184,42,.08);color:#e8b82a"
+            "font-weight:800;background-color:#e8f5e9;color:#1a5c2a"
             if row.name == n_rows else ""
             for _ in row
         ],
@@ -172,218 +170,66 @@ def kpi_card(label, value, delta=None, delta_color="normal"):
 
 # ── semaphores ────────────────────────────────────────────────────────────────
 
-_POS  = "background-color:rgba(74,222,128,.12);color:#4ade80;font-weight:700"
-_WARN = "background-color:rgba(251,191,36,.12);color:#fbbf24;font-weight:700"
-_NEG  = "background-color:rgba(248,113,113,.12);color:#f87171;font-weight:700"
-
 def sem_rinde(val):
     if pd.isna(val): return ""
-    if val >= 28: return _POS
-    if val >= 24: return _WARN
-    return _NEG
+    if val >= 28: return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val >= 24: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
 
 def sem_avance(val):
     if pd.isna(val): return ""
-    if val >= 90: return _POS
-    if val >= 50: return _WARN
-    return _NEG
+    if val >= 90: return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val >= 50: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
 
 def sem_desvio(val):
     if pd.isna(val): return ""
-    if val >= -5:  return _POS
-    if val >= -15: return _WARN
-    return _NEG
+    if val >= -5:  return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val >= -15: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
 
 def sem_en_est(val):
     if pd.isna(val): return ""
-    if val == 0:  return _POS
-    if val <= 50: return _WARN
-    return _NEG
+    if val == 0:   return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val <= 50:  return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
 
 def sem_avance_entrega(val):
     if pd.isna(val): return ""
-    if val >= 90: return _POS
-    if val >= 50: return _WARN
-    return _NEG
-
-def sem_desvio_kgha(val):
-    if pd.isna(val): return ""
-    if val >= 0:    return _POS
-    if val >= -200: return _WARN
-    return _NEG
-
-# ── HTML cosecha table ────────────────────────────────────────────────────────
-
-def _avance_cell_style(v):
-    if pd.isna(v): return "background:rgba(255,255,255,.05);color:#6b8a74"
-    if v >= 90:    return "background:rgba(74,222,128,.12);color:#4ade80;font-weight:700"
-    if v >= 70:    return "background:rgba(74,222,128,.08);color:#4ade80;font-weight:700"
-    if v >= 50:    return "background:rgba(251,191,36,.12);color:#fbbf24;font-weight:700"
-    if v >= 30:    return "background:rgba(251,191,36,.08);color:#fbbf24;font-weight:700"
-    return "background:rgba(248,113,113,.12);color:#f87171;font-weight:700"
-
-def _rrro_cell_style(v):
-    if pd.isna(v): return "background:rgba(255,255,255,.05);color:#6b8a74"
-    if v >= 0:    return "background:rgba(74,222,128,.12);color:#4ade80;font-weight:700"
-    if v >= -10:  return "background:rgba(251,191,36,.12);color:#fbbf24;font-weight:700"
-    return "background:rgba(248,113,113,.12);color:#f87171;font-weight:700"
-
-def _fibra_cell_style(v):
-    if pd.isna(v): return "background:rgba(255,255,255,.05);color:#6b8a74"
-    if v >= 28:   return "background:rgba(74,222,128,.12);color:#4ade80;font-weight:700"
-    if v >= 24:   return "background:rgba(251,191,36,.12);color:#fbbf24;font-weight:700"
-    return "background:rgba(248,113,113,.12);color:#f87171;font-weight:700"
-
-def _f(v, fmt, suffix=""):
-    return "—" if (v is None or (isinstance(v, float) and pd.isna(v))) else f"{v:{fmt}}{suffix}"
-
-def render_cosecha_html(rows):
-
-    def _avance_bar(av):
-        if av is None or (isinstance(av, float) and pd.isna(av)):
-            return '<span style="color:#4a6a7a">—</span>'
-        pct = min(max(av, 0), 100)
-        if av >= 90:   bc, tc = "#4ade80", "#0a1520"
-        elif av >= 70: bc, tc = "#22c55e", "#0a1520"
-        elif av >= 50: bc, tc = "#fbbf24", "#0a1520"
-        elif av >= 30: bc, tc = "#f97316", "#fff"
-        else:          bc, tc = "#f87171", "#fff"
-        return (
-            f'<div style="position:relative;background:rgba(255,255,255,.08);border-radius:3px;'
-            f'height:22px;min-width:84px;overflow:hidden">'
-            f'<div style="position:absolute;left:0;top:0;height:100%;width:{pct:.0f}%;background:{bc}"></div>'
-            f'<span style="position:absolute;inset:0;display:flex;align-items:center;'
-            f'justify-content:center;font-weight:700;font-size:0.76rem;color:{tc}">'
-            f'{av:.1f}%</span></div>'
-        )
-
-    def _rrro_badge(val):
-        if val is None or (isinstance(val, float) and pd.isna(val)):
-            return '<span style="color:#4a6a7a">—</span>'
-        if val >= 0:     bg, color = "rgba(74,222,128,.15)", "#4ade80"
-        elif val >= -10: bg, color = "rgba(251,191,36,.15)", "#fbbf24"
-        else:            bg, color = "rgba(248,113,113,.15)", "#f87171"
-        arrow = "▲" if val >= 0 else "▼"
-        return (f'<span style="background:{bg};color:{color};padding:3px 10px;'
-                f'border-radius:3px;font-weight:700;font-size:0.78rem">'
-                f'{arrow} {val:+.1f}%</span>')
-
-    def _fibra_badge(val):
-        if val is None or (isinstance(val, float) and pd.isna(val)):
-            return '<span style="color:#4a6a7a">—</span>'
-        if val >= 28:   bg, color = "rgba(74,222,128,.15)", "#4ade80"
-        elif val >= 24: bg, color = "rgba(251,191,36,.15)", "#fbbf24"
-        else:           bg, color = "rgba(248,113,113,.15)", "#f87171"
-        return (f'<span style="background:{bg};color:{color};padding:3px 10px;'
-                f'border-radius:3px;font-weight:700;font-size:0.78rem">'
-                f'{val:.1f}%</span>')
-
-    def _num(v, fmt):
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return '<span style="color:#4a6a7a">—</span>'
-        return f"{v:{fmt}}"
-
-    tbody = ""
-    for idx, row in enumerate(rows):
-        is_total = row.get("campo") == "TOTAL"
-        if is_total:
-            row_style  = "background:rgba(232,184,42,.06)"
-            sep        = ";border-top:1px solid rgba(232,184,42,.35)"
-            campo_s    = f"padding:11px 16px;font-weight:800;color:#e8b82a;font-size:0.88rem{sep};border-bottom:1px solid rgba(232,184,42,.15)"
-        else:
-            row_style  = "background:#0d1a28" if idx % 2 == 0 else "background:#0a1520"
-            sep        = ""
-            campo_s    = "padding:11px 16px;font-weight:600;color:#e8f0ea;font-size:0.83rem;border-bottom:1px solid rgba(255,255,255,.05)"
-
-        td_r = f"padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.05);text-align:right;color:#a8c4b0;font-variant-numeric:tabular-nums{sep}"
-        td_c = f"padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.05);text-align:center{sep}"
-
-        tbody += f"""
-<tr style="{row_style}">
-  <td style="{campo_s}">{row.get('campo','')}</td>
-  <td style="{td_r}">{_num(row.get('sup_sembrada'), ',.0f')}</td>
-  <td style="{td_c}">{_avance_bar(row.get('pct_cosechado'))}</td>
-  <td style="{td_r}">{_num(row.get('sup_cosechada'), ',.0f')}</td>
-  <td style="{td_r};color:#8aacb8">{_num(row.get('rinde_plan_kgha'), ',.0f')}</td>
-  <td style="{td_r};color:#e8f0ea;font-weight:700">{_num(row.get('rinde_obt_kgha'), ',.0f')}</td>
-  <td style="{td_c}">{_rrro_badge(row.get('var_rinde_pct'))}</td>
-  <td style="{td_c}">{_fibra_badge(row.get('rinde_desmote_pct'))}</td>
-  <td style="{td_r}">{_num(row.get('rinde_neto_kgha'), ',.0f')}</td>
-</tr>"""
-
-    _th_grp = ("padding:9px 14px;text-align:center;font-weight:800;font-size:0.68rem;"
-               "letter-spacing:2px;text-transform:uppercase;"
-               "border-bottom:1px solid rgba(255,255,255,.08)")
-    _th_fld = ("padding:7px 12px;font-weight:500;font-size:0.70rem;"
-               "color:rgba(168,196,176,.7);white-space:nowrap;"
-               "border-top:1px solid rgba(255,255,255,.06)")
-
-    return f"""
-<div style="overflow-x:auto;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.5);margin:14px 0 8px 0;border:1px solid #1a2d40">
-<table style="width:100%;border-collapse:collapse;font-family:'Work Sans',system-ui,sans-serif">
-  <thead>
-    <tr style="background:#1a3347;color:rgba(255,255,255,.85)">
-      <th rowspan="2" style="padding:14px 16px;text-align:left;font-weight:700;font-size:0.82rem;vertical-align:middle;border-right:1px solid rgba(255,255,255,.08)">Campo</th>
-      <th colspan="3" style="{_th_grp}">Superficie</th>
-      <th colspan="3" style="{_th_grp};background:rgba(0,0,0,.2)">Rinde vs Plan</th>
-      <th colspan="2" style="{_th_grp};background:rgba(0,0,0,.3)">Desmote</th>
-    </tr>
-    <tr style="background:#1a3347;color:rgba(255,255,255,.85)">
-      <th style="{_th_fld};text-align:right">Sembrada (ha)</th>
-      <th style="{_th_fld};text-align:center">Avance</th>
-      <th style="{_th_fld};text-align:right">Cosechada (ha)</th>
-      <th style="{_th_fld};text-align:right;background:rgba(0,0,0,.2)">RO (kg/ha)</th>
-      <th style="{_th_fld};text-align:right;background:rgba(0,0,0,.2)">RR (kg/ha)</th>
-      <th style="{_th_fld};text-align:center;background:rgba(0,0,0,.2)">RR vs RO</th>
-      <th style="{_th_fld};text-align:center;background:rgba(0,0,0,.3)">Rinde Fibra</th>
-      <th style="{_th_fld};text-align:right;background:rgba(0,0,0,.3)">Rinde Neto (kg/ha)</th>
-    </tr>
-  </thead>
-  <tbody>{tbody}</tbody>
-</table>
-</div>"""
+    if val >= 90: return "background-color:#d5f5e3;color:#1a7a40;font-weight:700"
+    if val >= 50: return "background-color:#fef9e7;color:#b7950b;font-weight:700"
+    return "background-color:#fadbd8;color:#c0392b;font-weight:700"
 
 # ── aggregations ──────────────────────────────────────────────────────────────
 
 def resumen_cruzado(sisa_df, rem_df):
     sisa_agg = sisa_df.groupby("lugar").agg(
-        sup_planificada   = ("superficieplanificada",       "sum"),
         sup_sembrada      = ("superficiesembrada",          "sum"),
         sup_cosechada     = ("superficiecosechada",         "sum"),
         tn_planificadas   = ("tnplanificados",              "sum"),
         tn_producidas     = ("tnproducidos",                "sum"),
     ).reset_index().rename(columns={"lugar": "campo"})
-    sisa_agg["pct_cosechado"]    = (sisa_agg["sup_cosechada"] / sisa_agg["sup_sembrada"] * 100).where(sisa_agg["sup_sembrada"] > 0)
-    sisa_agg["rinde_obt_kgha"]  = (sisa_agg["tn_producidas"] * 1000 / sisa_agg["sup_sembrada"]).where(sisa_agg["sup_sembrada"] > 0)
-    sisa_agg["rinde_plan_kgha"] = (sisa_agg["tn_planificadas"] * 1000 / sisa_agg["sup_planificada"]).where(sisa_agg["sup_planificada"] > 0)
+    sisa_agg["pct_cosechado"] = (
+        sisa_agg["sup_cosechada"] / sisa_agg["sup_sembrada"] * 100
+    ).where(sisa_agg["sup_sembrada"] > 0)
 
     rem_agg = rem_df.groupby("establecimiento").agg(
-        entregado_tn  = ("cantidad",               "sum"),
-        tn_desmotadas = ("cantidadconsumo",        "sum"),
-        fibra_kg      = ("cantidadproducidakilos", "sum"),
+        entregado_tn  = ("cantidad",        "sum"),
+        tn_desmotadas = ("cantidadconsumo", "sum"),
     ).reset_index().rename(columns={"establecimiento": "campo"})
-    rem_agg["entregado_tn"]  = rem_agg["entregado_tn"]  / 1000
-    rem_agg["tn_desmotadas"] = rem_agg["tn_desmotadas"] / 1000
-    rem_agg["fibra_tn"]      = rem_agg["fibra_kg"]      / 1000
+    rem_agg["entregado_tn"]  /= 1000
+    rem_agg["tn_desmotadas"] /= 1000
 
     g = sisa_agg.merge(rem_agg, on="campo", how="left")
     g["entregado_tn"]       = g["entregado_tn"].fillna(0)
     g["tn_desmotadas"]      = g["tn_desmotadas"].fillna(0)
-    g["fibra_tn"]           = g["fibra_tn"].fillna(0)
     g["en_establecimiento"] = (g["tn_producidas"] - g["entregado_tn"]).clip(lower=0)
     g["avance_entrega_pct"] = (g["entregado_tn"] / g["tn_producidas"] * 100).where(g["tn_producidas"] > 0)
     g["cumpl_plan_pct"]     = (g["tn_producidas"] / g["tn_planificadas"] * 100).where(g["tn_planificadas"] > 0)
-    g["rinde_fibra_kgha"]   = (g["fibra_tn"] * 1000 / g["sup_sembrada"]).where(g["sup_sembrada"] > 0)
-    g["rinde_neto_kgha"]    = (g["tn_desmotadas"] * 1000 / g["sup_sembrada"]).where(g["sup_sembrada"] > 0)
-    g["var_rinde_kgha"]     = g["rinde_obt_kgha"] - g["rinde_plan_kgha"]
-    g["rinde_desmote_pct"]  = (g["fibra_tn"] / g["tn_desmotadas"] * 100).where(g["tn_desmotadas"] > 0)
-    g["var_rinde_pct"]      = (g["var_rinde_kgha"] / g["rinde_plan_kgha"] * 100).where(
-        g["rinde_plan_kgha"].notna() & (g["rinde_plan_kgha"] > 0)
-    )
     return g.sort_values("campo")
 
 def agg_campo_sisa(df):
-    _agg = dict(
+    g = df.groupby(["empresasucursal", "lugar"]).agg(
         sup_planificada = ("superficieplanificada", "sum"),
         sup_sembrada    = ("superficiesembrada",    "sum"),
         sup_cosechada   = ("superficiecosechada",   "sum"),
@@ -391,10 +237,7 @@ def agg_campo_sisa(df):
         tn_producidas   = ("tnproducidos",          "sum"),
         tn_resto        = ("restoacosechar",        "sum"),
         lotes           = ("lote",                 "count"),
-    )
-    if "zona" in df.columns:
-        _agg["zona"] = ("zona", "first")
-    g = df.groupby(["empresasucursal", "lugar"]).agg(**_agg).reset_index()
+    ).reset_index()
     g["avance_pct"]     = (g["sup_cosechada"] / g["sup_sembrada"] * 100).where(g["sup_sembrada"] > 0)
     g["rinde_esp_kgha"] = (g["tn_planificadas"] * 1000 / g["sup_planificada"]).where(g["sup_planificada"] > 0)
     g["rinde_obt_kgha"] = (g["tn_producidas"]   * 1000 / g["sup_sembrada"]).where(g["sup_sembrada"] > 0)
@@ -572,62 +415,51 @@ def cruce_fechas(sisa_df, rem_df):
 def inject_css():
     st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Work+Sans:wght@400;500;600;700;800&display=swap');
-
 [data-testid="stAppViewContainer"] > .main {
-    background: #0a1520;
-    font-family: 'Work Sans', sans-serif;
+    background: linear-gradient(160deg, #f4fdf7 0%, #edf9f2 60%, #f9fffc 100%);
 }
 [data-testid="stSidebar"] {
-    background: #0d1a28;
-    border-right: 1px solid #1a2d40;
-}
-/* sidebar */
-[data-testid="stSidebar"] {
-    border-right: 1px solid #1a2d40;
+    background: #ffffff;
+    border-right: 1px solid #e0f2e9;
 }
 [data-testid="stAppViewContainer"] h2 {
-    font-family: 'Libre Baskerville', Georgia, serif;
-    color: #e8f0ea;
-    font-weight: 700;
-    font-size: 1.3rem;
-    border-left: 4px solid #e8b82a;
-    padding-left: 12px;
+    color: #1a5c2a;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    border-bottom: 2px solid #2ecc71;
+    padding-bottom: 6px;
     margin-bottom: 18px !important;
-    margin-top: 24px !important;
 }
 [data-testid="stAppViewContainer"] h3 {
-    font-family: 'Work Sans', sans-serif;
-    color: #c8ddd0;
-    font-weight: 600;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-bottom: 12px !important;
+    color: #1a5c2a;
+    font-weight: 700;
 }
 .kpi-card {
-    background: #111d2b;
-    border-radius: 8px;
+    background: white;
+    border-radius: 14px;
     padding: 18px 20px 14px 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    border: 1px solid #1a2d40;
-    border-top: 2px solid #1a3347;
+    box-shadow: 0 2px 14px rgba(0,0,0,0.07);
+    border-top: 3px solid #2ecc71;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
     margin-bottom: 6px;
     min-height: 96px;
 }
+.kpi-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 28px rgba(46,204,113,0.20);
+}
 .kpi-label {
     font-size: 0.68rem;
-    color: rgba(168,196,176,0.55);
+    color: #888;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 0.07em;
     margin-bottom: 7px;
 }
 .kpi-value {
-    font-family: 'Work Sans', sans-serif;
     font-size: 1.55rem;
-    font-weight: 700;
-    color: #e8f0ea;
+    font-weight: 900;
+    color: #111;
     line-height: 1.15;
 }
 .kpi-delta {
@@ -636,47 +468,44 @@ def inject_css():
     margin-top: 5px;
 }
 [data-testid="stBaseButton-secondary"] {
-    background: transparent !important;
-    border: 1px solid #e8b82a !important;
-    color: #e8b82a !important;
-    border-radius: 4px !important;
+    border: 1.5px solid #2ecc71 !important;
+    color: #1a5c2a !important;
+    border-radius: 20px !important;
     font-weight: 600 !important;
-    font-size: 0.78rem !important;
     transition: all 0.2s !important;
 }
 [data-testid="stBaseButton-secondary"]:hover {
-    background: rgba(232,184,42,0.12) !important;
+    background: #2ecc71 !important;
+    color: white !important;
 }
 [data-testid="stDownloadButton"] button {
     background: transparent !important;
-    border: 1px solid rgba(232,184,42,0.4) !important;
-    color: #e8b82a !important;
+    border: 1px solid #2ecc71 !important;
+    color: #1a5c2a !important;
     font-size: 0.78rem !important;
-    border-radius: 4px !important;
+    border-radius: 20px !important;
     padding: 4px 14px !important;
     transition: all 0.2s !important;
 }
 [data-testid="stDownloadButton"] button:hover {
-    background: rgba(232,184,42,0.12) !important;
+    background: #2ecc71 !important;
+    color: white !important;
 }
 .stTabs [data-baseweb="tab-list"] {
-    gap: 0;
-    border-bottom: 1px solid #1a2d40;
-    margin-bottom: 16px;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 8px;
+    margin-bottom: 4px;
 }
 .stTabs [data-baseweb="tab"] {
-    font-size: 0.82rem;
-    font-weight: 600;
-    padding: 10px 24px;
-    color: #6b8a74;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    border-radius: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    padding: 14px 36px;
+    border-radius: 10px 10px 0 0;
 }
 .stTabs [aria-selected="true"] {
-    background-color: transparent;
-    color: #e8b82a;
-    border-bottom: 2px solid #e8b82a;
+    background-color: #e8f5e9;
+    color: #1a5c2a;
 }
 footer { visibility: hidden; }
 #MainMenu { visibility: hidden; }

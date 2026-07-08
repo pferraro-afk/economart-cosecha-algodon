@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import plotly.express as px
 import datetime
@@ -8,7 +8,6 @@ from utils import (
     resumen_cruzado, agg_campo_sisa, agg_campo_rem, agg_desmotadora,
     sup_lote, totales_row, style_total_row, fmt_num, download_btn,
     sem_avance, sem_desvio, sem_rinde, sem_en_est, sem_avance_entrega,
-    render_cosecha_html,
 )
 
 inject_css()
@@ -39,32 +38,26 @@ with col_ts:
     st.markdown(
         f"""
         <div style="
-            background: #111d2b;
-            border-bottom: 3px solid #e8b82a;
+            background: linear-gradient(135deg, #1a5c2a 0%, #27ae60 60%, #2ecc71 100%);
+            border-radius: 14px;
             padding: 18px 28px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,.4);
+            box-shadow: 0 4px 20px rgba(46,204,113,0.25);
         ">
-            <div style="display:flex;align-items:center;gap:20px">
-                <div style="width:1px;height:36px;background:rgba(232,184,42,.3)"></div>
-                <div>
-                    <div style="font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:rgba(232,184,42,.6);margin-bottom:4px">
-                        Algodón · Economart
-                    </div>
-                    <div style="font-family:'Libre Baskerville',Georgia,serif;color:#e8f0ea;font-size:1.25rem;font-weight:700;line-height:1.1">
-                        Control de Cosecha de Algodón
-                    </div>
-                    <div style="color:#6b8a74;font-size:0.80rem;margin-top:3px">
-                        Grupo Duhau · Campaña 2025/26 · Finnegans API
-                    </div>
+            <div>
+                <div style="color:white;font-size:1.55rem;font-weight:900;letter-spacing:-0.02em;line-height:1.1">
+                    🌿 Control de Cosecha de Algodón
+                </div>
+                <div style="color:rgba(255,255,255,0.82);font-size:0.85rem;margin-top:4px">
+                    Grupo Duhau · Campaña 2025/26 · Finnegans API
                 </div>
             </div>
-            <div style="text-align:right;color:#8aacb8;font-size:0.75rem;line-height:1.8">
-                <div>Actualizado: <b style="color:#c8ddd0">{st.session_state.last_update}</b></div>
-                <div>Último remito: <b style="color:#c8ddd0">{ultimo_remito}</b></div>
-                <div style="font-size:0.68rem;color:#6b8a74">↺ usá el botón para actualizar</div>
+            <div style="text-align:right;color:rgba(255,255,255,0.75);font-size:0.78rem;line-height:1.7">
+                <div>Actualizado: <b style="color:white">{st.session_state.last_update}</b></div>
+                <div>Último remito: <b style="color:white">{ultimo_remito}</b></div>
+                <div style="font-size:0.70rem">↺ usá el botón para actualizar</div>
             </div>
         </div>
         """,
@@ -111,12 +104,11 @@ if not sisa.empty:
     tot_desmotado = rc["tn_desmotadas"].sum()
     pct_entrega   = tot_entreg / tot_prod * 100 if tot_prod > 0 else 0
 
-    rinde_plan       = tot_plan / tot_semb if tot_semb > 0 else 0
-    rinde_obt        = tot_prod / tot_cos  if tot_cos  > 0 else 0
-    rinde_dev        = (rinde_obt - rinde_plan) / rinde_plan * 100 if rinde_plan > 0 else 0
-    pct_desmot       = tot_desmotado / tot_entreg * 100 if tot_entreg > 0 else 0
-    fibra_tn         = fibra_total / 1000 if not rem.empty else 0
-    rinde_fibra_tnha = fibra_tn / tot_semb if tot_semb > 0 else 0
+    rinde_plan  = tot_plan / tot_semb if tot_semb > 0 else 0
+    rinde_obt   = tot_prod / tot_cos  if tot_cos  > 0 else 0
+    rinde_dev   = (rinde_obt - rinde_plan) / rinde_plan * 100 if rinde_plan > 0 else 0
+    pct_desmot  = tot_desmotado / tot_entreg * 100 if tot_entreg > 0 else 0
+    fibra_tn    = fibra_total / 1000 if not rem.empty else 0
     fardos_n    = int(rem["cantidadproducidafardos"].sum()) if not rem.empty else 0
     rd          = rd_total if not rem.empty else 0
     rinde_color = "#00a651" if rd >= 28 else ("#d97706" if rd >= 24 else "#ea001d")
@@ -129,52 +121,54 @@ if not sisa.empty:
   display: flex; align-items: stretch; gap: 0; margin: 16px 0 24px;
 }}
 .kf-station {{
-  flex: 1; background: #111d2b; border: 1px solid #1a2d40;
-  border-top: 2px solid #1a3347; border-radius: 8px;
+  flex: 1; background: white; border: 1px solid #e5e5e5;
+  border-top: 3px solid transparent; border-radius: 12px;
   padding: 20px; display: flex; flex-direction: column; gap: 14px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  box-shadow: 0 2px 2px rgba(0,0,0,0.04);
 }}
-.kf-plan      {{ border-top-color: #1a3347; }}
-.kf-harvest   {{ border-top-color: #1a3347; }}
-.kf-logistics {{ border-top-color: #e8b82a; }}
-.kf-fiber     {{ border-top-color: #e8b82a; }}
+.kf-station:hover {{ box-shadow: 0 4px 16px rgba(0,0,0,0.10); }}
+.kf-plan      {{ border-top-color: #006bff; }}
+.kf-harvest   {{ border-top-color: #00a651; }}
+.kf-logistics {{ border-top-color: #d97706; }}
+.kf-fiber     {{ border-top-color: #7c3aed; }}
 .kf-header {{ display: flex; align-items: center; gap: 10px; }}
 .kf-icon {{
-  width: 28px; height: 28px; border-radius: 4px;
+  width: 28px; height: 28px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; flex-shrink: 0;
 }}
-.kf-plan      .kf-icon {{ background: rgba(26,51,71,.6); }}
-.kf-harvest   .kf-icon {{ background: rgba(26,51,71,.6); }}
-.kf-logistics .kf-icon {{ background: rgba(232,184,42,.12); }}
-.kf-fiber     .kf-icon {{ background: rgba(232,184,42,.12); }}
-.kf-title {{ font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #8aacb8; }}
-.kf-divider {{ height: 1px; background: rgba(255,255,255,.08); }}
+.kf-plan      .kf-icon {{ background: #e6f0ff; }}
+.kf-harvest   .kf-icon {{ background: #e6f7ee; }}
+.kf-logistics .kf-icon {{ background: #fff6e0; }}
+.kf-fiber     .kf-icon {{ background: #f0e8ff; }}
+.kf-title {{ font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #6b6b6b; }}
+.kf-divider {{ height: 1px; background: #f2f2f2; }}
 .kf-list {{ display: flex; flex-direction: column; gap: 14px; }}
 .kf-item {{ display: flex; flex-direction: column; gap: 3px; }}
-.kf-label {{ font-size: 11px; font-weight: 500; color: #7a9ea8; letter-spacing: 0.01em; }}
+.kf-label {{ font-size: 11px; font-weight: 500; color: #a8a8a8; letter-spacing: 0.01em; }}
 .kf-value-row {{ display: flex; align-items: baseline; gap: 4px; }}
-.kf-value {{ font-size: 26px; font-weight: 700; color: #e8f0ea; letter-spacing: -1px; line-height: 1; }}
-.kf-unit {{ font-size: 13px; color: #8aacb8; }}
+.kf-value {{ font-size: 26px; font-weight: 600; color: #171717; letter-spacing: -1px; line-height: 1; }}
+.kf-unit {{ font-size: 13px; color: #a8a8a8; }}
 .kf-dev {{
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 11px; font-weight: 700; padding: 2px 8px;
-  border-radius: 3px; width: fit-content; margin-top: 2px;
+  font-size: 11px; font-weight: 600; padding: 2px 7px;
+  border-radius: 9999px; width: fit-content; margin-top: 2px;
 }}
-.kf-dev-up   {{ background: rgba(74,222,128,.12); color: #4ade80; }}
-.kf-dev-down {{ background: rgba(248,113,113,.12); color: #f87171; }}
+.kf-dev-up   {{ background: #e6f7ee; color: #00a651; }}
+.kf-dev-down {{ background: #ffeaea; color: #ea001d; }}
 .kf-arrow {{
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 6px; width: 72px; flex-shrink: 0; padding: 0 2px;
 }}
 .kf-arrow-badge {{
-  background: #e8b82a; color: #0a1520; font-size: 12px; font-weight: 800;
-  padding: 4px 10px; border-radius: 3px; white-space: nowrap;
+  background: #171717; color: white; font-size: 13px; font-weight: 600;
+  padding: 4px 10px; border-radius: 9999px; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
 }}
 .kf-arrow-track {{ display: flex; align-items: center; width: 100%; }}
-.kf-line {{ flex: 1; height: 1px; background: #1a2d40; }}
-.kf-chevron {{ color: #e8b82a; font-size: 14px; line-height: 1; }}
-.kf-arrow-label {{ font-size: 10px; color: #8aacb8; font-weight: 500; text-align: center; line-height: 1.3; }}
+.kf-line {{ flex: 1; height: 1.5px; background: #e5e5e5; }}
+.kf-chevron {{ color: #a8a8a8; font-size: 14px; line-height: 1; }}
+.kf-arrow-label {{ font-size: 10px; color: #a8a8a8; font-weight: 500; text-align: center; line-height: 1.3; }}
 </style>
 <div class="kpi-flow">
 
@@ -263,10 +257,6 @@ if not sisa.empty:
         <div class="kf-value-row"><span class="kf-value" style="color:{rinde_color}">{rd:.1f}</span><span class="kf-unit">%</span></div>
       </div>
       <div class="kf-item">
-        <span class="kf-label">Rinde fibra parcial</span>
-        <div class="kf-value-row"><span class="kf-value">{rinde_fibra_tnha:.3f}</span><span class="kf-unit">tn/ha</span></div>
-      </div>
-      <div class="kf-item">
         <span class="kf-label">Toneladas de fibra</span>
         <div class="kf-value-row"><span class="kf-value">{fibra_tn:,.1f}</span><span class="kf-unit">tn</span></div>
       </div>
@@ -280,7 +270,7 @@ if not sisa.empty:
 </div>
 """, unsafe_allow_html=True)
 
-    rc = rc.sort_values("tn_planificadas", ascending=False)
+    rc = rc.sort_values("tn_producidas", ascending=False)
 
     rc_melt = rc[["campo", "entregado_tn", "en_establecimiento"]].melt(
         id_vars="campo",
@@ -291,105 +281,58 @@ if not sisa.empty:
         "en_establecimiento": "En Establecimiento",
     })
     orden_campos = rc["campo"].tolist()
-
-    tick_labels = []
-    for _, row in rc.iterrows():
-        rr = row.get("rinde_obt_kgha")
-        ro = row.get("rinde_plan_kgha")
-        rr_str = f"{rr:,.0f}" if (rr is not None and not pd.isna(rr)) else "—"
-        if ro is not None and not pd.isna(ro) and ro > 0 and rr is not None and not pd.isna(rr):
-            var = (rr - ro) / ro * 100
-            sign = "+" if var >= 0 else ""
-            sub = f"<br><sub style='font-size:10px;color:#888'>{rr_str} kg/ha ({sign}{var:.0f}% vs RO)</sub>"
-        else:
-            sub = f"<br><sub style='font-size:10px;color:#888'>{rr_str} kg/ha</sub>"
-        tick_labels.append(row["campo"] + sub)
-
     fig_rc = px.bar(
         rc_melt,
         x="campo", y="tn", color="estado", barmode="stack",
         labels={"tn": "Tn", "campo": "", "estado": ""},
         color_discrete_map={
-            "Entregado a Desm.":  "#4ade80",
-            "En Establecimiento": "#e8b82a",
+            "Entregado a Desm.":  "#2ecc71",
+            "En Establecimiento": "#f39c12",
         },
         category_orders={"campo": orden_campos},
     )
     fig_rc.add_scatter(
         x=rc["campo"], y=rc["tn_planificadas"],
         mode="markers", name="Planificado",
-        marker=dict(symbol="diamond", size=12, color="#e8b82a",
-                    line=dict(width=1, color="#c49a1a")),
+        marker=dict(symbol="diamond", size=12, color="#2980b9",
+                    line=dict(width=1, color="#1a5276")),
     )
-    for _, row in rc.iterrows():
-        pct = row.get("pct_cosechado")
-        if pct is not None and not pd.isna(pct):
-            fig_rc.add_annotation(
-                x=row["campo"],
-                y=row["tn_producidas"],
-                text=f"🌾 {pct:.0f}%",
-                showarrow=False,
-                yshift=12,
-                font=dict(size=11, color="#4ade80", family="Work Sans,system-ui"),
-            )
     fig_rc.update_layout(
-        height=400, margin=dict(l=0, r=0, t=30, b=80),
+        height=380, margin=dict(l=0, r=0, t=10, b=40),
         legend_title="", xaxis_tickangle=-30,
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#a8c4b0", family="Work Sans,system-ui"),
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#a8c4b0")),
-        xaxis=dict(gridcolor="#1a2d40", tickcolor="#3d5c47"),
-        yaxis=dict(gridcolor="#1a2d40", tickcolor="#3d5c47"),
-    )
-    fig_rc.update_xaxes(
-        tickmode="array",
-        tickvals=orden_campos,
-        ticktext=tick_labels,
     )
     st.plotly_chart(fig_rc, use_container_width=True)
 
     st.divider()
 
-    rows_html = []
-    for _, row in rc.iterrows():
-        rows_html.append({
-            "campo":             row["campo"],
-            "sup_sembrada":      row.get("sup_sembrada"),
-            "sup_cosechada":     row.get("sup_cosechada"),
-            "pct_cosechado":     row.get("pct_cosechado"),
-            "rinde_plan_kgha":   row.get("rinde_plan_kgha"),
-            "rinde_obt_kgha":    row.get("rinde_obt_kgha"),
-            "var_rinde_pct":     row.get("var_rinde_pct"),
-            "rinde_desmote_pct": row.get("rinde_desmote_pct"),
-            "rinde_neto_kgha":   row.get("rinde_neto_kgha"),
-        })
-    _ts  = rc["sup_sembrada"].sum()
-    _tc  = rc["sup_cosechada"].sum()
-    _tp  = rc["tn_planificadas"].sum()
-    _tprod = rc["tn_producidas"].sum()
-    _tdesm = rc["tn_desmotadas"].sum()
-    _tfibn = rc["fibra_tn"].sum() if "fibra_tn" in rc.columns else 0
-    _tplan_sup = rc["sup_planificada"].sum() if "sup_planificada" in rc.columns else 0
-    _ro_tot = _tp * 1000 / _tplan_sup if _tplan_sup > 0 else None
-    _rr_tot = _tprod * 1000 / _ts if _ts > 0 else None
-    _var_tot = (_rr_tot - _ro_tot) / _ro_tot * 100 if (_ro_tot and _ro_tot > 0 and _rr_tot is not None) else None
-    rows_html.append({
-        "campo":             "TOTAL",
-        "sup_sembrada":      _ts,
-        "sup_cosechada":     _tc,
-        "pct_cosechado":     _tc / _ts * 100 if _ts > 0 else None,
-        "rinde_plan_kgha":   _ro_tot,
-        "rinde_obt_kgha":    _rr_tot,
-        "var_rinde_pct":     _var_tot,
-        "rinde_desmote_pct": _tfibn / _tdesm * 100 if _tdesm > 0 else None,
-        "rinde_neto_kgha":   _tdesm * 1000 / _ts if _ts > 0 else None,
+    disp_rc = rc.rename(columns={
+        "campo":              "Campo",
+        "sup_sembrada":       "Sup Semb ha",
+        "sup_cosechada":      "Sup Cos ha",
+        "pct_cosechado":      "% Cosechado",
+        "tn_planificadas":    "Tn Plan",
+        "tn_producidas":      "Tn Prod",
+        "cumpl_plan_pct":     "% vs Plan",
+        "entregado_tn":       "Entregado Tn",
+        "avance_entrega_pct": "% Entregado",
+        "en_establecimiento": "En Estab. Tn",
+        "tn_desmotadas":      "Tn Desmotadas",
     })
-    st.markdown(render_cosecha_html(rows_html), unsafe_allow_html=True)
-    download_btn(rc[["campo", "sup_sembrada", "sup_cosechada", "pct_cosechado",
-                      "tn_planificadas", "tn_producidas", "entregado_tn",
-                      "tn_desmotadas", "rinde_plan_kgha", "rinde_obt_kgha",
-                      "var_rinde_pct", "rinde_desmote_pct", "rinde_neto_kgha"]],
-                 "resumen_general.xlsx")
+    disp_rc_tot = totales_row(disp_rc, "Campo")
+    n = len(disp_rc)
+    st.dataframe(
+        style_total_row(
+            disp_rc_tot.style
+                .format(fmt_num(disp_rc_tot), na_rep="—")
+                .map(sem_en_est,        subset=["En Estab. Tn"])
+                .map(sem_avance_entrega, subset=["% Entregado"])
+                .map(sem_avance,        subset=["% Cosechado"]),
+            n,
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+    download_btn(disp_rc, "resumen_general.xlsx")
 
 else:
     st.info("Sin datos de planificación para los filtros seleccionados.")
