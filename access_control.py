@@ -16,6 +16,10 @@ def is_session_expired(last_activity: float, now: float, timeout_seconds: int = 
 
 
 def require_login() -> None:
+    if not hasattr(st.user, "is_logged_in"):
+        st.error("⚠️ Auth no configurado. Agregar sección [auth] en Streamlit Secrets.")
+        st.stop()
+
     if not st.user.is_logged_in:
         st.header("Dashboard — Duhau")
         st.subheader("Iniciá sesión con tu cuenta de Google")
