@@ -13,6 +13,9 @@ st.set_page_config(
     layout="wide",
 )
 
+from access_control import require_login
+require_login()
+
 pg = st.navigation([
     st.Page("pages/0_Resumen.py",   title="Resumen General", icon="🏠"),
     st.Page("pages/1_Produccion.py", title="Producción",      icon="🌱"),
