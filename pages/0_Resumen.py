@@ -39,32 +39,26 @@ with col_ts:
     st.markdown(
         f"""
         <div style="
-            background: #111d2b;
-            border-bottom: 3px solid #e8b82a;
+            background: linear-gradient(135deg, #1a5c2a 0%, #27ae60 60%, #2ecc71 100%);
+            border-radius: 14px;
             padding: 18px 28px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,.4);
+            box-shadow: 0 4px 20px rgba(46,204,113,0.25);
         ">
-            <div style="display:flex;align-items:center;gap:20px">
-                <div style="width:1px;height:36px;background:rgba(232,184,42,.3)"></div>
-                <div>
-                    <div style="font-size:10px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;color:rgba(232,184,42,.6);margin-bottom:4px">
-                        Algodón · Economart
-                    </div>
-                    <div style="font-family:'Libre Baskerville',Georgia,serif;color:#e8f0ea;font-size:1.25rem;font-weight:700;line-height:1.1">
-                        Control de Cosecha de Algodón
-                    </div>
-                    <div style="color:#6b8a74;font-size:0.80rem;margin-top:3px">
-                        Grupo Duhau · Campaña 2025/26 · Finnegans API
-                    </div>
+            <div>
+                <div style="color:white;font-size:1.55rem;font-weight:900;letter-spacing:-0.02em;line-height:1.1">
+                    🌿 Control de Cosecha de Algodón
+                </div>
+                <div style="color:rgba(255,255,255,0.82);font-size:0.85rem;margin-top:4px">
+                    Grupo Duhau · Campaña 2025/26 · Finnegans API
                 </div>
             </div>
-            <div style="text-align:right;color:#8aacb8;font-size:0.75rem;line-height:1.8">
-                <div>Actualizado: <b style="color:#c8ddd0">{st.session_state.last_update}</b></div>
-                <div>Último remito: <b style="color:#c8ddd0">{ultimo_remito}</b></div>
-                <div style="font-size:0.68rem;color:#6b8a74">↺ usá el botón para actualizar</div>
+            <div style="text-align:right;color:rgba(255,255,255,0.75);font-size:0.78rem;line-height:1.7">
+                <div>Actualizado: <b style="color:white">{st.session_state.last_update}</b></div>
+                <div>Último remito: <b style="color:white">{ultimo_remito}</b></div>
+                <div style="font-size:0.70rem">↺ usá el botón para actualizar</div>
             </div>
         </div>
         """,
@@ -129,52 +123,54 @@ if not sisa.empty:
   display: flex; align-items: stretch; gap: 0; margin: 16px 0 24px;
 }}
 .kf-station {{
-  flex: 1; background: #111d2b; border: 1px solid #1a2d40;
-  border-top: 2px solid #1a3347; border-radius: 8px;
+  flex: 1; background: white; border: 1px solid #e5e5e5;
+  border-top: 3px solid transparent; border-radius: 12px;
   padding: 20px; display: flex; flex-direction: column; gap: 14px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  box-shadow: 0 2px 2px rgba(0,0,0,0.04);
 }}
-.kf-plan      {{ border-top-color: #1a3347; }}
-.kf-harvest   {{ border-top-color: #1a3347; }}
-.kf-logistics {{ border-top-color: #e8b82a; }}
-.kf-fiber     {{ border-top-color: #e8b82a; }}
+.kf-station:hover {{ box-shadow: 0 4px 16px rgba(0,0,0,0.10); }}
+.kf-plan      {{ border-top-color: #006bff; }}
+.kf-harvest   {{ border-top-color: #00a651; }}
+.kf-logistics {{ border-top-color: #d97706; }}
+.kf-fiber     {{ border-top-color: #7c3aed; }}
 .kf-header {{ display: flex; align-items: center; gap: 10px; }}
 .kf-icon {{
-  width: 28px; height: 28px; border-radius: 4px;
+  width: 28px; height: 28px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; flex-shrink: 0;
 }}
-.kf-plan      .kf-icon {{ background: rgba(26,51,71,.6); }}
-.kf-harvest   .kf-icon {{ background: rgba(26,51,71,.6); }}
-.kf-logistics .kf-icon {{ background: rgba(232,184,42,.12); }}
-.kf-fiber     .kf-icon {{ background: rgba(232,184,42,.12); }}
-.kf-title {{ font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #8aacb8; }}
-.kf-divider {{ height: 1px; background: rgba(255,255,255,.08); }}
+.kf-plan      .kf-icon {{ background: #e6f0ff; }}
+.kf-harvest   .kf-icon {{ background: #e6f7ee; }}
+.kf-logistics .kf-icon {{ background: #fff6e0; }}
+.kf-fiber     .kf-icon {{ background: #f0e8ff; }}
+.kf-title {{ font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #6b6b6b; }}
+.kf-divider {{ height: 1px; background: #f2f2f2; }}
 .kf-list {{ display: flex; flex-direction: column; gap: 14px; }}
 .kf-item {{ display: flex; flex-direction: column; gap: 3px; }}
-.kf-label {{ font-size: 11px; font-weight: 500; color: #7a9ea8; letter-spacing: 0.01em; }}
+.kf-label {{ font-size: 11px; font-weight: 500; color: #a8a8a8; letter-spacing: 0.01em; }}
 .kf-value-row {{ display: flex; align-items: baseline; gap: 4px; }}
-.kf-value {{ font-size: 26px; font-weight: 700; color: #e8f0ea; letter-spacing: -1px; line-height: 1; }}
-.kf-unit {{ font-size: 13px; color: #8aacb8; }}
+.kf-value {{ font-size: 26px; font-weight: 600; color: #171717; letter-spacing: -1px; line-height: 1; }}
+.kf-unit {{ font-size: 13px; color: #a8a8a8; }}
 .kf-dev {{
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 11px; font-weight: 700; padding: 2px 8px;
-  border-radius: 3px; width: fit-content; margin-top: 2px;
+  font-size: 11px; font-weight: 600; padding: 2px 7px;
+  border-radius: 9999px; width: fit-content; margin-top: 2px;
 }}
-.kf-dev-up   {{ background: rgba(74,222,128,.12); color: #4ade80; }}
-.kf-dev-down {{ background: rgba(248,113,113,.12); color: #f87171; }}
+.kf-dev-up   {{ background: #e6f7ee; color: #00a651; }}
+.kf-dev-down {{ background: #ffeaea; color: #ea001d; }}
 .kf-arrow {{
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 6px; width: 72px; flex-shrink: 0; padding: 0 2px;
 }}
 .kf-arrow-badge {{
-  background: #e8b82a; color: #0a1520; font-size: 12px; font-weight: 800;
-  padding: 4px 10px; border-radius: 3px; white-space: nowrap;
+  background: #171717; color: white; font-size: 13px; font-weight: 600;
+  padding: 4px 10px; border-radius: 9999px; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
 }}
 .kf-arrow-track {{ display: flex; align-items: center; width: 100%; }}
-.kf-line {{ flex: 1; height: 1px; background: #1a2d40; }}
-.kf-chevron {{ color: #e8b82a; font-size: 14px; line-height: 1; }}
-.kf-arrow-label {{ font-size: 10px; color: #8aacb8; font-weight: 500; text-align: center; line-height: 1.3; }}
+.kf-line {{ flex: 1; height: 1.5px; background: #e5e5e5; }}
+.kf-chevron {{ color: #a8a8a8; font-size: 14px; line-height: 1; }}
+.kf-arrow-label {{ font-size: 10px; color: #a8a8a8; font-weight: 500; text-align: center; line-height: 1.3; }}
 </style>
 <div class="kpi-flow">
 
@@ -310,16 +306,16 @@ if not sisa.empty:
         x="campo", y="tn", color="estado", barmode="stack",
         labels={"tn": "Tn", "campo": "", "estado": ""},
         color_discrete_map={
-            "Entregado a Desm.":  "#4ade80",
-            "En Establecimiento": "#e8b82a",
+            "Entregado a Desm.":  "#2ecc71",
+            "En Establecimiento": "#f39c12",
         },
         category_orders={"campo": orden_campos},
     )
     fig_rc.add_scatter(
         x=rc["campo"], y=rc["tn_planificadas"],
         mode="markers", name="Planificado",
-        marker=dict(symbol="diamond", size=12, color="#e8b82a",
-                    line=dict(width=1, color="#c49a1a")),
+        marker=dict(symbol="diamond", size=12, color="#2980b9",
+                    line=dict(width=1, color="#1a5276")),
     )
     for _, row in rc.iterrows():
         pct = row.get("pct_cosechado")
@@ -330,16 +326,11 @@ if not sisa.empty:
                 text=f"🌾 {pct:.0f}%",
                 showarrow=False,
                 yshift=12,
-                font=dict(size=11, color="#4ade80", family="Work Sans,system-ui"),
+                font=dict(size=11, color="#1a5c2a", family="system-ui"),
             )
     fig_rc.update_layout(
         height=400, margin=dict(l=0, r=0, t=30, b=80),
         legend_title="", xaxis_tickangle=-30,
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#a8c4b0", family="Work Sans,system-ui"),
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color="#a8c4b0")),
-        xaxis=dict(gridcolor="#1a2d40", tickcolor="#3d5c47"),
-        yaxis=dict(gridcolor="#1a2d40", tickcolor="#3d5c47"),
     )
     fig_rc.update_xaxes(
         tickmode="array",
