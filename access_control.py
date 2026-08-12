@@ -126,11 +126,14 @@ def _render_login_screen() -> None:
 
 
 def require_login() -> None:
-    if not hasattr(st.user, "is_logged_in"):
+    try:
+        logged_in = st.user.is_logged_in
+    except (AttributeError, KeyError):
         st.error("⚠️ Auth no configurado. Agregar sección [auth] en Streamlit Secrets.")
         st.stop()
+        return
 
-    if not st.user.is_logged_in:
+    if not logged_in:
         _render_login_screen()
         st.stop()
 
