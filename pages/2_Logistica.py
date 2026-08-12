@@ -202,16 +202,18 @@ with sub_fechas:
 with sub_desm:
     st.subheader("Logística por desmotadora")
     disp_desm = vd.rename(columns={
-        "desmotadora":    "Desmotadora",
-        "empresa":        "Empresa",
-        "establecimiento":"Campo",
-        "entrega_kg":     "Entregado (kg)",
-        "fibra_kg":       "Fibra (kg)",
-        "rinde_desmote":  "Rinde (%)",
-        "fardos":         "Fardos",
-        "ppf_kg":         "PP Fardo (kg)",
-    })[["Desmotadora", "Empresa", "Campo", "Entregado (kg)", "Fibra (kg)",
-        "Rinde (%)", "Fardos", "PP Fardo (kg)"]]
+        "desmotadora":        "Desmotadora",
+        "empresa":            "Empresa",
+        "establecimiento":    "Campo",
+        "entrega_kg":         "Entregado (kg)",
+        "consumo_kg":         "Desmotado (kg)",
+        "stock_sin_desmotar": "Sin Desmotar (kg)",
+        "fibra_kg":           "Fibra (kg)",
+        "rinde_desmote":      "Rinde (%)",
+        "fardos":             "Fardos",
+        "ppf_kg":             "PP Fardo (kg)",
+    })[["Desmotadora", "Empresa", "Campo", "Entregado (kg)", "Desmotado (kg)",
+        "Sin Desmotar (kg)", "Fibra (kg)", "Rinde (%)", "Fardos", "PP Fardo (kg)"]]
     st.dataframe(
         disp_desm.style
             .format(fmt_num(disp_desm), na_rep="—")

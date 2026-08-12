@@ -442,8 +442,9 @@ def agg_desmotadora(df):
         fibra_kg   = ("cantidadproducidakilos","sum"),
         fardos     = ("cantidadproducidafardos","sum"),
     ).reset_index()
-    g["rinde_desmote"] = (g["fibra_kg"] / g["consumo_kg"] * 100).where(g["consumo_kg"] > 0)
-    g["ppf_kg"]        = (g["entrega_kg"] / g["fardos"]).where(g["fardos"] > 0)
+    g["rinde_desmote"]  = (g["fibra_kg"] / g["consumo_kg"] * 100).where(g["consumo_kg"] > 0)
+    g["ppf_kg"]         = (g["entrega_kg"] / g["fardos"]).where(g["fardos"] > 0)
+    g["stock_sin_desmotar"] = g["entrega_kg"] - g["consumo_kg"]
     return g.sort_values(["desmotadora", "establecimiento"])
 
 def agg_contratista(df):
