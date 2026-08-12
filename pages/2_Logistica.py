@@ -222,3 +222,28 @@ with sub_desm:
         hide_index=True,
     )
     download_btn(disp_desm, "logistica_desmotadora.xlsx")
+
+    st.divider()
+    st.subheader("Entregado vs. Desmotado por desmotadora")
+    vd_tot = vd.groupby("desmotadora", as_index=False).agg(
+        entrega_kg=("entrega_kg", "sum"),
+        consumo_kg=("consumo_kg", "sum"),
+    )
+    fig_desm = px.bar(
+        vd_tot.melt(
+            id_vars="desmotadora",
+            value_vars=["entrega_kg", "consumo_kg"],
+            var_name="tipo", value_name="kg",
+        ).replace({"entrega_kg": "Entregado", "consumo_kg": "Desmotado"}),
+        x="desmotadora", y="kg", color="tipo", barmode="group",
+        labels={"kg": "Kg", "desmotadora": "", "tipo": ""},
+        color_discrete_map={"Entregado": "#aed6f1", "Desmotado": "#2ecc71"},
+        text_auto=".2s",
+        height=420,
+    )
+    fig_desm.update_layout(
+        margin=dict(l=0, r=0, t=10, b=40), legend_title="",
+        xaxis_tickangle=-30,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig_desm, use_container_width=True)
