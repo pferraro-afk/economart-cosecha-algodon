@@ -39,7 +39,16 @@ def get_token():
 
 # ── fetch ─────────────────────────────────────────────────────────────────────
 
-@st.cache_data(show_spinner="Cargando remitos...")
+# Cached Finnegans data expires after this, so the app refreshes on its own
+CACHE_TTL_SECONDS = 30 * 60
+
+# Argentina has no DST; a fixed offset avoids depending on the server's timezone
+AR_TZ = datetime.timezone(datetime.timedelta(hours=-3))
+
+def now_ar():
+    return datetime.datetime.now(AR_TZ)
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner="Cargando remitos...")
 def fetch_remitos():
     token = get_token()
     resp = requests.get(
@@ -50,9 +59,9 @@ def fetch_remitos():
     resp.raise_for_status()
     df = pd.DataFrame(resp.json())
     df.columns = df.columns.str.lower()
-    return df
+    return df, now_ar()
 
-@st.cache_data(show_spinner="Cargando planificación...")
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner="Cargando planificación...")
 def fetch_sisa():
     token = get_token()
     resp = requests.get(
@@ -67,7 +76,7 @@ def fetch_sisa():
     resp.raise_for_status()
     df = pd.DataFrame(resp.json())
     df.columns = df.columns.str.lower()
-    return df[df["actividad"].str.contains("algod", case=False, na=False)].copy()
+    return df[df["actividad"].str.contains("algod", case=False, na=False)].copy(), now_ar()
 
 # ── cleaning ──────────────────────────────────────────────────────────────────
 
@@ -671,14 +680,23 @@ footer { visibility: hidden; }
 def load_data():
     raw_rem = raw_sisa = None
     rem_error = sisa_error = None
+    fetched = []
     try:
-        raw_rem = clean_remitos(fetch_remitos())
+        df, ts = fetch_remitos()
+        raw_rem = clean_remitos(df)
+        fetched.append(ts)
     except Exception as e:
         rem_error = str(e)
     try:
-        raw_sisa = clean_sisa(fetch_sisa())
+        df, ts = fetch_sisa()
+        raw_sisa = clean_sisa(df)
+        fetched.append(ts)
     except Exception as e:
         sisa_error = str(e)
+    # Oldest successful query, so the label never overstates freshness
+    st.session_state.last_update = (
+        min(fetched).strftime("%d/%m/%Y %H:%M") if fetched else "—"
+    )
     if raw_rem is None and raw_sisa is None:
         st.error("No se pudo conectar con ningún servicio de Finnegans. Verificá las credenciales.")
         st.stop()

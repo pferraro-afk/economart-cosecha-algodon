@@ -19,15 +19,11 @@ col_btn, col_ts = st.columns([1, 9])
 with col_btn:
     if st.button("↺ Actualizar"):
         st.cache_data.clear()
-        st.session_state.pop("last_update", None)
         st.rerun()
 
 # ── data load ─────────────────────────────────────────────────────────────────
 
 raw_rem, raw_sisa, rem_error, sisa_error = load_data()
-
-if "last_update" not in st.session_state:
-    st.session_state.last_update = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
 ultimo_remito = (
     raw_rem["fecha"].max().strftime("%d/%m/%Y")
