@@ -4,9 +4,9 @@ import plotly.express as px
 
 from utils import (
     inject_css, load_data, sidebar_filters,
-    agg_campo_sisa, cruce_campo, cruce_lote,
+    agg_campo_sisa,
     totales_row, style_total_row, fmt_num, download_btn,
-    kpi_card, sem_avance, sem_desvio, sem_avance_entrega,
+    kpi_card, sem_avance, sem_desvio,
 )
 
 inject_css()
@@ -55,6 +55,31 @@ st.progress(
     min(avance_gl / 100, 1.0),
     text=f"Avance de cosecha: {avance_gl:.1f}% de la superficie sembrada",
 )
+
+st.divider()
+
+# ── Avance de cosecha por campo ───────────────────────────────────────────────
+
+st.subheader("Avance de cosecha por campo (%)")
+fig_av = px.bar(
+    vc_sisa.sort_values("avance_pct"),
+    x="avance_pct", y="lugar", orientation="h",
+    color="avance_pct",
+    color_continuous_scale=["#e74c3c", "#f39c12", "#27ae60"],
+    range_color=[0, 100],
+    labels={"avance_pct": "%", "lugar": ""},
+    text="avance_pct",
+)
+fig_av.update_traces(
+    texttemplate="%{text:.1f}%", textposition="outside",
+    hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
+)
+fig_av.update_layout(
+    height=420, margin=dict(l=0, r=40, t=0, b=0),
+    coloraxis_showscale=False,
+    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+)
+st.plotly_chart(fig_av, use_container_width=True)
 
 st.divider()
 
@@ -197,153 +222,3 @@ with st.expander("Ver detalle por lote (Planificación)"):
         hide_index=True,
     )
     download_btn(disp_lote_sisa, "detalle_lotes_planificacion.xlsx")
-
-st.divider()
-
-# ── Cruce Planificación + Remitos ─────────────────────────────────────────────
-
-if rem.empty:
-    st.info("Sin remitos para cruzar con planificación.")
-    st.stop()
-
-st.subheader("Cruce Planificación + Remitos")
-sub_campo, sub_lote = st.tabs(["Por Campo", "Por Lote"])
-
-with sub_campo:
-    gc = cruce_campo(sisa, rem)
-
-    tot_prod_c   = gc["tn_producidas"].sum()
-    tot_entr_c   = gc["bruto_tn"].sum()
-    tot_en_est_c = gc["en_estab_tn"].sum()
-    pct_entr_c   = tot_entr_c / tot_prod_c * 100 if tot_prod_c > 0 else 0
-    tot_rol_prod = gc["rollos_producidos"].sum()
-    tot_rol_carg = gc["rollos_cargados"].sum()
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(kpi_card("Tn Producidas (Plan.)", f"{tot_prod_c:,.1f}"), unsafe_allow_html=True)
-    c2.markdown(kpi_card("Entregado a Desm.", f"{tot_entr_c:,.1f} Tn",
-        delta=f"{pct_entr_c:.0f}% entregado", delta_color="off"), unsafe_allow_html=True)
-    c3.markdown(kpi_card("En Establecimiento", f"{tot_en_est_c:,.1f} Tn"), unsafe_allow_html=True)
-    c4.markdown(kpi_card("Δ Rollos (Carg − Prod)", f"{tot_rol_carg - tot_rol_prod:+,.0f}",
-        delta_color="off"), unsafe_allow_html=True)
-
-    fig_gc = px.bar(
-        gc.melt(
-            id_vars="campo",
-            value_vars=["bruto_tn", "en_estab_tn"],
-            var_name="origen", value_name="tn",
-        ).replace({
-            "bruto_tn":    "Entregado (Remitos)",
-            "en_estab_tn": "En Establecimiento",
-        }),
-        x="campo", y="tn", color="origen", barmode="stack",
-        labels={"tn": "Tn", "campo": "", "origen": ""},
-        color_discrete_map={
-            "Entregado (Remitos)": "#2ecc71",
-            "En Establecimiento":  "#f39c12",
-        },
-        height=380,
-    )
-    fig_gc.update_layout(
-        margin=dict(l=0, r=0, t=10, b=40), legend_title="",
-        xaxis_tickangle=-30,
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig_gc, use_container_width=True)
-    st.divider()
-
-    cols_disp = {
-        "campo":            "Campo",
-        "tn_planificadas":  "Tn Plan",
-        "tn_producidas":    "Tn Prod (Plan.)",
-        "cumpl_plan_pct":   "% vs Plan",
-        "avance_cos_pct":   "Avance Cos %",
-        "bruto_tn":         "Entregado Tn",
-        "pct_entregado":    "% Entregado",
-        "en_estab_tn":      "En Estab Tn",
-        "rollos_producidos":"Rollos Prod",
-        "rollos_cargados":  "Rollos Carg",
-        "delta_rollos":     "Δ Rollos",
-        "pct_rollos_carg":  "% Rollos Carg",
-        "cant_remitos":     "N° Remitos",
-    }
-    disp_gc = gc.rename(columns=cols_disp)[list(cols_disp.values())]
-    disp_gc_tot = totales_row(disp_gc, "Campo")
-    n_gc = len(disp_gc)
-    st.dataframe(
-        style_total_row(
-            disp_gc_tot.style
-                .format(fmt_num(disp_gc_tot), na_rep="—")
-                .map(sem_avance, subset=["Avance Cos %"])
-                .map(sem_avance_entrega, subset=["% Entregado"]),
-            n_gc,
-        ),
-        use_container_width=True, hide_index=True,
-    )
-    download_btn(disp_gc, "cruce_campo.xlsx")
-
-with sub_lote:
-    gl = cruce_lote(sisa, rem)
-
-    gl_plot = gl.dropna(subset=["tn_producidas"]).copy()
-    gl_plot = gl_plot[gl_plot["tn_producidas"] > 0].sort_values(
-        ["campo", "pct_entregado"], ascending=[True, False]
-    )
-    if not gl_plot.empty:
-        fig_gl = px.bar(
-            gl_plot,
-            x="pct_entregado",
-            y="lote",
-            color="campo",
-            orientation="h",
-            custom_data=["tn_producidas", "bruto_tn", "avance_pct", "campo"],
-            labels={
-                "pct_entregado": "% Entregado vs Producido",
-                "lote":          "Lote",
-                "campo":         "Campo",
-            },
-            height=max(400, len(gl_plot) * 26),
-        )
-        fig_gl.update_traces(
-            hovertemplate=(
-                "<b>%{y}</b> — %{customdata[3]}<br>"
-                "Entregado: %{x:.1f}%<br>"
-                "Tn producidas: %{customdata[0]:,.0f}<br>"
-                "Tn entregadas: %{customdata[1]:,.0f}<br>"
-                "Avance cosecha: %{customdata[2]:.1f}%"
-                "<extra></extra>"
-            )
-        )
-        fig_gl.add_vline(
-            x=100,
-            line_dash="dot", line_color="#aaa", line_width=1,
-            annotation_text="100%", annotation_position="top right",
-        )
-        fig_gl.update_layout(
-            margin=dict(l=0, r=20, t=10, b=0), legend_title="",
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            yaxis=dict(tickfont=dict(size=11)),
-        )
-        st.plotly_chart(fig_gl, use_container_width=True)
-        st.divider()
-
-    cols_l = {
-        "campo":            "Campo",
-        "lote":             "Lote",
-        "tn_producidas":    "Tn Prod (Plan.)",
-        "sup_cosechada":    "Sup Cos ha",
-        "avance_pct":       "Avance %",
-        "rollos_producidos":"Rollos Prod",
-        "bruto_tn":         "Entregado Tn",
-        "remitos":          "N° Remitos",
-        "pct_entregado":    "% Entregado",
-    }
-    disp_gl = gl.rename(columns=cols_l)[[v for v in cols_l.values() if v in gl.rename(columns=cols_l).columns]]
-    st.dataframe(
-        disp_gl.style
-            .format(fmt_num(disp_gl), na_rep="—")
-            .map(sem_avance, subset=[c for c in ["Avance %"] if c in disp_gl.columns])
-            .map(sem_avance_entrega, subset=[c for c in ["% Entregado"] if c in disp_gl.columns]),
-        use_container_width=True, hide_index=True,
-    )
-    download_btn(disp_gl, "cruce_lote.xlsx")

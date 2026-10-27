@@ -1,14 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import datetime
 
 from utils import (
     inject_css, load_data, sidebar_filters,
-    resumen_cruzado, agg_campo_sisa, agg_campo_rem, agg_desmotadora,
-    sup_lote, totales_row, style_total_row, fmt_num, download_btn,
-    sem_avance, sem_desvio, sem_rinde, sem_en_est, sem_avance_entrega,
-    render_cosecha_html,
+    resumen_cruzado, download_btn, render_cosecha_html,
 )
 
 inject_css()
@@ -75,9 +71,6 @@ sisa, rem = sidebar_filters(raw_rem, raw_sisa)
 # ── pre-compute ───────────────────────────────────────────────────────────────
 
 if not rem.empty:
-    sup          = sup_lote(rem)
-    vc           = agg_campo_rem(rem, sup)
-    vd           = agg_desmotadora(rem)
     fibra_total  = rem["cantidadproducidakilos"].sum()
     consumo_total= rem["cantidadconsumo"].sum()
     rd_total     = fibra_total / consumo_total * 100 if consumo_total > 0 else 0
@@ -380,183 +373,6 @@ if not sisa.empty:
 
 else:
     st.info("Sin datos de planificación para los filtros seleccionados.")
-
-st.divider()
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TABS: PRODUCCIÓN · LOGÍSTICA · DESMOTE  (resumen — 1 gráfico + 1 tabla c/u)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-tab_prod, tab_log, tab_desm = st.tabs(["🌱 Producción", "🚚 Logística", "🏭 Desmote"])
-
-# ── TAB PRODUCCIÓN ────────────────────────────────────────────────────────────
-
-with tab_prod:
-    if sisa.empty:
-        st.warning("Sin datos de planificación para los filtros seleccionados.")
-    else:
-        vc_sisa = agg_campo_sisa(sisa)
-
-        st.subheader("Avance de cosecha por campo (%)")
-        fig_av = px.bar(
-            vc_sisa.sort_values("avance_pct"),
-            x="avance_pct", y="lugar", orientation="h",
-            color="avance_pct",
-            color_continuous_scale=["#e74c3c", "#f39c12", "#27ae60"],
-            range_color=[0, 100],
-            labels={"avance_pct": "%", "lugar": ""},
-            text="avance_pct",
-        )
-        fig_av.update_traces(
-            texttemplate="%{text:.1f}%", textposition="outside",
-            hovertemplate="<b>%{y}</b><br>Avance: <b>%{x:.1f}%</b><extra></extra>",
-        )
-        fig_av.update_layout(
-            height=420, margin=dict(l=0, r=40, t=0, b=0),
-            coloraxis_showscale=False,
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_av, use_container_width=True)
-
-        st.subheader("Planificado vs Real por campo")
-        disp_sisa = vc_sisa.rename(columns={
-            "empresasucursal":  "Sucursal",
-            "lugar":            "Campo",
-            "lotes":            "Lotes",
-            "sup_planificada":  "S.Plan ha",
-            "sup_sembrada":     "S.Semb ha",
-            "sup_cosechada":    "S.Cos ha",
-            "avance_pct":       "Avance %",
-            "tn_planificadas":  "Tn Plan",
-            "tn_producidas":    "Tn Prod",
-            "tn_resto":         "Resto ha",
-            "desvio_tn":        "Desvío Tn",
-            "desvio_pct":       "Desvío %",
-            "rinde_esp_kgha":   "R.Esp kg/ha",
-            "rinde_obt_kgha":   "R.Obt kg/ha",
-        })[["Sucursal", "Campo", "Lotes", "S.Plan ha", "S.Semb ha", "S.Cos ha",
-            "Avance %", "Tn Plan", "Tn Prod", "Desvío Tn", "Desvío %",
-            "R.Esp kg/ha", "R.Obt kg/ha"]]
-        disp_sisa_tot = totales_row(disp_sisa, "Campo")
-        n_sisa = len(disp_sisa)
-        st.dataframe(
-            style_total_row(
-                disp_sisa_tot.style
-                    .format(fmt_num(disp_sisa_tot), na_rep="—")
-                    .map(sem_avance, subset=["Avance %"])
-                    .map(sem_desvio, subset=["Desvío %"]),
-                n_sisa,
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
-        download_btn(disp_sisa, "planificacion_campo.xlsx")
-
-    st.divider()
-    st.caption("Usá el menú lateral para ver el detalle completo de Producción.")
-
-# ── TAB LOGÍSTICA ─────────────────────────────────────────────────────────────
-
-with tab_log:
-    if rem.empty:
-        st.info("Sin remitos para los filtros seleccionados.")
-    else:
-        st.subheader("Algodón bruto por campo (Tn)")
-        fig_log = px.bar(
-            vc.sort_values("bruto_tn"),
-            x="bruto_tn", y="establecimiento", color="empresa",
-            orientation="h",
-            labels={"bruto_tn": "Tn", "establecimiento": ""},
-            color_discrete_sequence=px.colors.qualitative.Set2,
-        )
-        fig_log.update_traces(
-            hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:,.1f} Tn</b><extra></extra>",
-        )
-        fig_log.update_layout(
-            height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_log, use_container_width=True)
-
-        st.subheader("Logística por desmotadora")
-        disp_desm = vd.rename(columns={
-            "desmotadora":    "Desmotadora",
-            "empresa":        "Empresa",
-            "establecimiento":"Campo",
-            "entrega_kg":     "Entregado (kg)",
-            "fibra_kg":       "Fibra (kg)",
-            "rinde_desmote":  "Rinde (%)",
-            "fardos":         "Fardos",
-            "ppf_kg":         "PP Fardo (kg)",
-        })[["Desmotadora", "Empresa", "Campo", "Entregado (kg)", "Fibra (kg)",
-            "Rinde (%)", "Fardos", "PP Fardo (kg)"]]
-        st.dataframe(
-            disp_desm.style
-                .format(fmt_num(disp_desm), na_rep="—")
-                .map(sem_rinde, subset=["Rinde (%)"]),
-            use_container_width=True,
-            hide_index=True,
-        )
-        download_btn(disp_desm, "logistica_desmotadora.xlsx")
-
-    st.divider()
-    st.caption("Usá el menú lateral para ver el detalle completo de Logística.")
-
-# ── TAB DESMOTE ───────────────────────────────────────────────────────────────
-
-with tab_desm:
-    if rem.empty:
-        st.info("Sin remitos para los filtros seleccionados.")
-    else:
-        st.subheader("Rinde al desmote por campo (%)")
-        fig_desm = px.bar(
-            vc.sort_values("rinde_desmote"),
-            x="rinde_desmote", y="establecimiento", color="empresa",
-            orientation="h",
-            labels={"rinde_desmote": "%", "establecimiento": ""},
-            color_discrete_sequence=px.colors.qualitative.Set2,
-        )
-        fig_desm.add_vline(x=24, line_dash="dot", line_color="orange", annotation_text="24%")
-        fig_desm.add_vline(x=28, line_dash="dot", line_color="green",  annotation_text="28%")
-        fig_desm.update_traces(
-            hovertemplate="<b>%{y}</b><br>%{data.name}: <b>%{x:.1f}%</b><extra></extra>",
-        )
-        fig_desm.update_layout(
-            height=420, margin=dict(l=0, r=0, t=0, b=0), legend_title="",
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_desm, use_container_width=True)
-
-        st.subheader("Producción por campo")
-        disp_campo = vc.rename(columns={
-            "empresa":        "Empresa",
-            "establecimiento":"Campo",
-            "sup_ha":         "Sup (ha)",
-            "bruto_tn":       "Bruto (Tn)",
-            "rinde_kgha":     "Rinde (kg/ha)",
-            "fibra_tn":       "Fibra (Tn)",
-            "rinde_desmote":  "Rinde Desm. (%)",
-            "fardos":         "Fardos",
-            "ppf_kg":         "PP Fardo (kg)",
-            "remitos":        "Remitos",
-        })[["Empresa", "Campo", "Sup (ha)", "Bruto (Tn)", "Rinde (kg/ha)",
-            "Fibra (Tn)", "Rinde Desm. (%)", "Fardos", "PP Fardo (kg)", "Remitos"]]
-        disp_campo_tot = totales_row(disp_campo, "Empresa", label="TOTAL")
-        n_campo = len(disp_campo)
-        st.dataframe(
-            style_total_row(
-                disp_campo_tot.style
-                    .format(fmt_num(disp_campo_tot), na_rep="—")
-                    .map(sem_rinde, subset=["Rinde Desm. (%)"]),
-                n_campo,
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
-        download_btn(disp_campo, "produccion_campo.xlsx")
-
-    st.divider()
-    st.caption("Usá el menú lateral para ver el detalle completo de Desmote.")
 
 # ── footer ────────────────────────────────────────────────────────────────────
 st.divider()
